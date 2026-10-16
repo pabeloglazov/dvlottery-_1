@@ -160,6 +160,7 @@ img { max-width: 100%; display: block; }
 .has-error input, .has-error textarea, .has-error select { border-color: var(--stamp) !important; }
 .field-error { margin-top: 6px; color: var(--stamp); font-size: 14px; font-weight: 500; }
 .date-row { display: grid; grid-template-columns: 1fr 2fr 1.3fr; gap: 10px; }
+.date-row select { margin-top: 8px; }
 
 .choices { display: grid; gap: 8px; margin-top: 8px; }
 .choices-2 { grid-template-columns: 1fr 1fr; }
@@ -228,6 +229,18 @@ img { max-width: 100%; display: block; }
 .mini-frame img { width: 100%; height: 100%; object-fit: cover; }
 .mini-photo .field-hint { margin-top: 6px; }
 .add-kid { justify-self: start; }
+
+.pbox { position: relative; flex: none; }
+.pbox-drop { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 12px; border: 2px dashed #b9c3d3; background: #f7f9fb; color: var(--ink-3); cursor: pointer; overflow: hidden; transition: border-color .15s, background .15s, color .15s; }
+.pbox-drop:hover, .pbox-drop.is-over { border-color: var(--green); background: var(--green-tint); color: var(--green); }
+.pbox-drop:has(input:focus-visible) { box-shadow: var(--focus); }
+.pbox-drop.has-photo { border-style: solid; border-color: var(--line); background: #fff; }
+.pbox-drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.pbox-drop img { width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.pbox-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px; text-align: center; font-size: 13px; line-height: 1.3; pointer-events: none; }
+.pbox-empty svg { width: 28px; height: 28px; }
+.pbox-x { position: absolute; top: -10px; right: -10px; width: 30px; height: 30px; border-radius: 50%; border: 2px solid #fff; background: var(--ink); color: #fff; font-size: 18px; line-height: 1; display: grid; place-items: center; cursor: pointer; box-shadow: 0 4px 10px rgba(20,33,64,.25); }
+.pbox-x:hover { background: var(--stamp); }
 
 /* Вопросы */
 .faq-wrap { max-width: 820px; }

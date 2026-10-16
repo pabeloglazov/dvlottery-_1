@@ -169,15 +169,59 @@ function Choice({ name, options, value, onChange, lang, columns }) {
   );
 }
 
+const daysIn = (m, y) => (m ? new Date(+y || 2000, +m, 0).getDate() : 31);
+
 function DateInput({ id, p, onChange, lang, f }) {
+  const now = new Date().getFullYear();
+  const years = [];
+  for (let y = now; y >= now - 100; y--) years.push(y);
+  const days = Array.from({ length: daysIn(p.bm, p.by) }, (_, i) => i + 1);
+  // Если выбранного дня нет в новом месяце (31 апреля, 29 февраля не в високосный) — сбрасываем день.
+  const change = (k) => (e) => {
+    const v = e.target.value;
+    onChange(k, v);
+    const m = k === "bm" ? v : p.bm, y = k === "by" ? v : p.by;
+    if (k !== "bd" && p.bd && +p.bd > daysIn(m, y)) onChange("bd", "");
+  };
   return (
     <div className="date-row">
-      <input id={id} inputMode="numeric" maxLength={2} placeholder={f.birth.d} aria-label={f.birth.d} value={p.bd} onChange={(e) => onChange("bd", e.target.value.replace(/\D/g, ""))} />
-      <select aria-label={f.birth.m} value={p.bm} onChange={(e) => onChange("bm", e.target.value)}>
+      <select id={id} aria-label={f.birth.d} value={p.bd} onChange={change("bd")}>
+        <option value="">{f.birth.d}</option>
+        {days.map((d) => <option key={d} value={String(d)}>{d}</option>)}
+      </select>
+      <select aria-label={f.birth.m} value={p.bm} onChange={change("bm")}>
         <option value="">{f.birth.m}</option>
         {MONTHS[lang].map((m, i) => <option key={m} value={String(i + 1)}>{m}</option>)}
       </select>
-      <input inputMode="numeric" maxLength={4} placeholder={f.birth.y} aria-label={f.birth.y} value={p.by} onChange={(e) => onChange("by", e.target.value.replace(/\D/g, ""))} />
+      <select aria-label={f.birth.y} value={p.by} onChange={change("by")}>
+        <option value="">{f.birth.y}</option>
+        {years.map((y) => <option key={y} value={String(y)}>{y}</option>)}
+      </select>
+    </div>
+  );
+}
+
+// Поле для фото: клик по полю или перетаскивание файла — выбор, крестик — удалить.
+function PhotoBox({ photo, onFile, onRemove, size, t, inputId }) {
+  const [over, setOver] = useState(false);
+  const pick = (e) => { const file = e.target.files?.[0]; e.target.value = ""; if (file) onFile(file); };
+  return (
+    <div className="pbox" style={{ width: size, height: size }}>
+      <label
+        className={"pbox-drop" + (photo ? " has-photo" : "") + (over ? " is-over" : "")}
+        onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+        onDragLeave={() => setOver(false)}
+        onDrop={(e) => { e.preventDefault(); setOver(false); const file = e.dataTransfer.files?.[0]; if (file) onFile(file); }}
+      >
+        <input id={inputId} type="file" accept="image/*,.heic,.heif" onChange={pick} />
+        {photo ? <img src={photo} alt="" /> : (
+          <span className="pbox-empty">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V5M7.5 9.5L12 5l4.5 4.5M5 19h14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            {size >= 120 && <span>{t.fields.photo.drop}</span>}
+          </span>
+        )}
+      </label>
+      {photo && <button type="button" className="pbox-x" aria-label={t.fields.photo.remove} onClick={onRemove}>×</button>}
     </div>
   );
 }
@@ -187,12 +231,10 @@ function PersonFields({ prefix, p, onChange, errors, t, lang, onPhotoError }) {
   const f = t.fields, fm = t.family;
   const id = (k) => prefix.replace(/\W/g, "") + "-" + k;
   const err = (k) => errors[prefix + k];
-  const onPhoto = async (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
+  const onFile = async (file) => {
     try { onChange("photo", await prepareImage(file)); } catch { onPhotoError(t.photoType); }
   };
+
   return (
     <div className="person-fields">
       <Field id={id("name")} label={f.name.l} hint={f.name.h} error={err("name")}>
@@ -215,11 +257,11 @@ function PersonFields({ prefix, p, onChange, errors, t, lang, onPhotoError }) {
       <div className="field">
         <span className="field-label">{fm.photo}</span>
         <div className="mini-photo">
-          <div className="mini-frame">{p.photo ? <img src={p.photo} alt="" /> : <svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="48" r="20" fill="none" stroke="currentColor" strokeWidth="2" /><path d="M24 104c6-20 20-30 36-30s30 10 36 30" fill="none" stroke="currentColor" strokeWidth="2" /></svg>}</div>
+          <PhotoBox photo={p.photo} onFile={onFile} onRemove={() => onChange("photo", null)} size={88} t={t} inputId={id("photo")} />
           <div>
             {CAN_UPLOAD && (
               <label className="btn btn-ghost file-btn">
-                <input type="file" accept="image/*,.heic,.heif" onChange={onPhoto} />
+                <input type="file" accept="image/*,.heic,.heif" onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ""; if (file) onFile(file); }} />
                 {p.photo ? fm.photoChange : fm.photoPick}
               </label>
             )}
@@ -289,10 +331,7 @@ export default function EntryForm({ lang, t }) {
   const next = () => { if (checkStep(step)) { setStep(step + 1); scrollTop(); } };
   const back = () => { setErrors({}); setStep(step - 1); scrollTop(); };
 
-  const onPhoto = async (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
+  const onPhotoFile = async (file) => {
     if (!/^image\//.test(file.type) && !/\.(heic|heif)$/i.test(file.name)) { setErrors({ photo: t.photoType }); return; }
     try {
       setPhoto(await prepareImage(file));
@@ -454,15 +493,13 @@ export default function EntryForm({ lang, t }) {
           <div className="fields">
             <Field id="photo" label={f.photo.l} hint={f.photo.h} error={errors.photo || (state === "error" ? errMsg : "")}>
               <div className="photo-zone">
-                <div className="photo-frame">
-                  {photo && !d.photoLater ? <img src={photo} alt="" /> : (
-                    <svg viewBox="0 0 120 120" aria-hidden="true"><rect x="1" y="1" width="118" height="118" rx="6" fill="none" stroke="currentColor" strokeDasharray="4 4" /><circle cx="60" cy="48" r="20" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="M24 104c6-20 20-30 36-30s30 10 36 30" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
-                  )}
-                </div>
+                {CAN_UPLOAD
+                  ? <PhotoBox photo={photo && !d.photoLater ? photo : null} onFile={onPhotoFile} onRemove={() => setPhoto(null)} size={160} t={t} inputId="photo" />
+                  : <div className="photo-frame" />}
                 <div className="photo-actions">
                   {CAN_UPLOAD && (
                     <label className="btn btn-primary file-btn">
-                      <input id="photo" type="file" accept="image/*,.heic,.heif" onChange={onPhoto} />
+                      <input type="file" accept="image/*,.heic,.heif" onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ""; if (file) onPhotoFile(file); }} />
                       {photo && !d.photoLater ? f.photo.change : f.photo.pick}
                     </label>
                   )}
