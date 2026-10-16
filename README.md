@@ -1,9 +1,8 @@
-# BELOGLAZOV GREEN CARD
+# Beloglazov Green Card — сайт подачи заявок DV Lottery
 
-Recovered DV Lottery landing page from the September 8, 2025 ChatGPT conversation:
-https://chatgpt.com/c/68bf4fc2-44e4-8322-b62c-1401fbd3a38d
+Лендинг с анкетой участника. Ответы анкеты уходят в Google Form «Заявка на Green Card 2025-2026».
 
-## Run
+## Запуск
 
 ```sh
 npm install
@@ -11,8 +10,20 @@ npm run dev
 npm run build
 ```
 
-Russian/English content, RUB/USD pricing, inline SVG artwork, styles, FAQ, testimonials, and original Google Forms and Telegram links are included. No separate image assets were present in the recovered source.
+## Как устроено
 
-The unmodified extracted source is preserved in `archive/`. The runnable copy restores missing template-literal delimiters, corrects timeZone detection, and applies the language-toggle styling requested in the conversation.
+- `src/content.js` — все тексты (RU/EN), цены, варианты ответов.
+- `src/config.js` — адрес Google Form, номера полей `entry.*`, адрес загрузки фото, Telegram.
+- `src/EntryForm.jsx` — анкета из 5 шагов с проверкой полей. Отправка — POST на `formResponse`.
+- `.github/workflows/pages.yml` — автодеплой на GitHub Pages при пуше в `main`.
 
-Content and prices are the historical 2025 version and have not been updated or verified for the current DV cycle. This import does not deploy a public website.
+## Требования к Google Form
+
+Чтобы ответы с сайта принимались, форма не должна требовать входа в Google-аккаунт:
+
+- без вопросов с загрузкой файла (фото передаётся ссылкой в текстовом вопросе);
+- сбор email — «Ответ респондента» или выключен, не «Проверенные».
+
+Если в форме поменяли вопросы, обновите номера полей в `src/config.js`.
+
+Исходная версия страницы из ChatGPT (2025) лежит в `archive/`.
