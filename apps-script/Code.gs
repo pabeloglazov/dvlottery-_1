@@ -35,6 +35,8 @@ const TITLES = {
   marital: 'Укажите ваше текущее семейное положение',
   children: 'Есть ли у вас дети?',
   telegram: 'Ваш Telegram для связи',
+  spouseData: 'Данные супруга(и)',
+  kidsData: 'Данные детей',
 };
 
 function norm_(s) { return String(s || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
@@ -106,6 +108,27 @@ function setup() {
   return report.join('\n');
 }
 
+/** Добавляет в форму вопросы для данных супруга(и) и детей. Запускать вручную один раз. */
+function setupFamily() {
+  const form = openForm_();
+  const report = [];
+  let anchor = findItem_(form, TITLES.children);
+  [['spouseData', 'Заполняется сайтом: ФИО, пол, дата и место рождения, ссылка на фото.'],
+   ['kidsData', 'Заполняется сайтом: по одному ребёнку на строку, со ссылкой на фото.']].forEach(function (x) {
+    let item = findItem_(form, TITLES[x[0]]);
+    if (!item) {
+      item = form.addParagraphTextItem().setTitle(TITLES[x[0]]).setHelpText(x[1]).setRequired(false);
+      if (anchor) form.moveItem(item.getIndex(), anchor.getIndex() + 1);
+      report.push('Добавлен вопрос: ' + TITLES[x[0]]);
+    } else {
+      report.push('Вопрос уже есть: ' + TITLES[x[0]]);
+    }
+    anchor = item;
+  });
+  Logger.log(report.join('\n'));
+  return report.join('\n');
+}
+
 function entryId_(item) {
   let resp;
   switch (item.getType()) {
@@ -139,23 +162,38 @@ function doPost(e) {
     const fr = form.createResponse();
     const s = function (k) { return String(d[k] == null ? '' : d[k]).trim().slice(0, 2000); };
 
-    // Фото
-    let photoValue = 'Пришлёт фото в Telegram';
-    if (d.photo && d.photo.data) {
-      const bytes = Utilities.base64Decode(d.photo.data);
+    const savePhoto = function (photo, label) {
+      if (!photo || !photo.data) return '';
+      const bytes = Utilities.base64Decode(photo.data);
       if (bytes.length > MAX_PHOTO_BYTES) throw new Error('photo too large');
-      const mime = /^image\/(jpeg|png)$/.test(d.photo.mime) ? d.photo.mime : 'image/jpeg';
+      const mime = /^image\/(jpeg|png)$/.test(photo.mime) ? photo.mime : 'image/jpeg';
       const stamp = Utilities.formatDate(new Date(), 'America/Los_Angeles', 'yyyy-MM-dd HH-mm');
-      const name = (s('name') || 'BEZ IMENI').replace(/[^A-Za-z0-9 \-]/g, '') + ' — ' + stamp + (mime === 'image/png' ? '.png' : '.jpg');
-      const file = photoFolder_().createFile(Utilities.newBlob(bytes, mime, name));
-      photoValue = file.getUrl();
-    }
+      const clean = String(label || 'BEZ IMENI').toUpperCase().replace(/[^A-Z0-9 \-()]/g, '').trim();
+      return photoFolder_().createFile(Utilities.newBlob(bytes, mime, clean + ' — ' + stamp + (mime === 'image/png' ? '.png' : '.jpg'))).getUrl();
+    };
+    const pad = function (n) { return ('0' + String(n || '')).slice(-2); };
+    const applicant = s('name').toUpperCase();
+    const personLine = function (p, role) {
+      p = p || {};
+      const b = p.birth || {};
+      const url = savePhoto(p.photo, String(p.name || '') + ' (' + role + ' ' + applicant + ')');
+      const name = String(p.name || '').trim().toUpperCase().slice(0, 200);
+      return [name, String(p.sex || '').slice(0, 2), pad(b.d) + '.' + pad(b.m) + '.' + String(b.y || '').slice(0, 4),
+        String(p.birthCity || '').trim().toUpperCase().slice(0, 100), String(p.birthCountry || '').trim().toUpperCase().slice(0, 100),
+        'фото: ' + (url || 'пришлёт в Telegram')].join(', ');
+    };
+
+    // Фото заявителя
+    let photoValue = savePhoto(d.photo, applicant) || 'Пришлёт фото в Telegram';
+    const spouseText = d.spouse ? personLine(d.spouse, 'SPOUSE OF') : '';
+    const kidsText = (Array.isArray(d.kids) ? d.kids.slice(0, 12) : []).map(function (k, i) { return (i + 1) + '. ' + personLine(k, 'CHILD OF'); }).join('\n');
 
     const values = {
       name: s('name').toUpperCase(), sex: s('sex'), birthCity: s('birthCity').toUpperCase(),
       birthCountry: s('birthCountry').toUpperCase(), photo: photoValue, address: s('address'),
       country: s('country').toUpperCase(), email: s('email'), marital: s('marital'),
       children: s('children'), telegram: s('telegram'), education: s('education'),
+      spouseData: spouseText, kidsData: kidsText,
     };
 
     Object.keys(TITLES).forEach(function (key) {
@@ -345,17 +383,20 @@ var F = {
   country: ['страна, в которой вы живете сейчас'], email: ['ваш действующий e-mail адрес'],
   education: ['укажите, какое у вас образование'], marital: ['укажите ваше текущее семейное положение'],
   children: ['есть ли у вас дети?'], telegram: ['ваш telegram для связи'],
+  spouseData: ['данные супруга(и)'], kidsData: ['данные детей'],
   confirm: ['column 1'], result: ['результат'], status: ['статус'], note: ['заметка']
 };
 var LABELS = [
   ['name', 'Фамилия и имя'], ['sex', 'Пол'], ['birth', 'Дата рождения'], ['birthCity', 'Город рождения'],
   ['birthCountry', 'Страна рождения'], ['address', 'Адрес'], ['country', 'Страна проживания'], ['email', 'Email'],
-  ['education', 'Образование'], ['marital', 'Семейное положение'], ['children', 'Дети'], ['telegram', 'Telegram']
+  ['education', 'Образование'], ['marital', 'Семейное положение'], ['children', 'Дети'], ['telegram', 'Telegram'],
+  ['spouseData', 'Супруг(а)'], ['kidsData', 'Дети — данные']
 ];
 var D = null, idx = {}, filter = 'all', selected = null;
 
 function norm(s) { return String(s || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function linkify(v) { return esc(v).replace(/https?:\/\/[^\s,]+/g, function (u) { return '<a href="' + u + '" target="_blank" rel="noopener">фото</a>'; }); }
 function get(r, k) { var i = idx[k]; return i == null ? '' : (r.v[i] || '').trim(); }
 function statusOf(r) { return get(r, 'status') || (get(r, 'confirm') ? 'Подано' : 'Новая'); }
 function badge(st, res) {
