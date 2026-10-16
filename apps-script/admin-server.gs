@@ -1,0 +1,260 @@
+/* ============================== Админка ============================== */
+/*
+ * Клиент = человек (ФИО + дата рождения), может подавать анкету в разные годы.
+ * Подача = клиент + сезон (DV-2025, DV-2026, DV-2027...). Статусы, оплата, номер
+ * подтверждения и результат хранятся в листе «Подачи». Если для сезона записи
+ * ещё нет, она собирается из строки анкеты (старые колонки «Column 1», «Результат»,
+ * «Статус», «Заметка»), поэтому старые данные видны без переноса.
+ */
+
+const OWNER_EMAIL = 'pa.beloglazov@gmail.com';
+const RESPONSES_SHEET_ID = '1FkV6QtxhMSCdAod3Eh6PudKhLT8wYz4I6wdWsLJF2Gw';
+const SUBS_SHEET = 'Подачи';
+const SUBS_HEADERS = ['Клиент', 'Ключ', 'Сезон', 'Статус', 'Оплата', 'Номер подтверждения', 'Результат', 'Заметка', 'Строка анкеты', 'Обновлено'];
+const STATUSES = ['Новая', 'Связался', 'Оплачено', 'Подано'];
+const DEFAULT_SEASON = 2027;
+
+const COLS = {
+  ts: ['timestamp', 'отметка времени'], name: ['напиши фамилию и имя'], sex: ['выберите свой пол'],
+  birth: ['день вашего рождения'], birthCity: ['город в котором вы родились'], birthCountry: ['страна в которой вы родились'],
+  photoNew: ['фотография'], photoOld: ['загрузите фотографию'], address: ['напишите ваш адрес'],
+  country: ['страна, в которой вы живете сейчас'], email: ['ваш действующий e-mail адрес'],
+  education: ['укажите, какое у вас образование'], marital: ['укажите ваше текущее семейное положение'],
+  children: ['есть ли у вас дети?'], telegram: ['ваш telegram для связи'],
+  spouseData: ['данные супруга(и)'], kidsData: ['данные детей'],
+  confirm: ['column 1', 'номер подтверждения'], result: ['результат'], status: ['статус'], note: ['заметка']
+};
+
+function isOwner_() {
+  try { return Session.getActiveUser().getEmail().toLowerCase() === OWNER_EMAIL; } catch (e) { return false; }
+}
+function assertOwner_() { if (!isOwner_()) throw new Error('Нет доступа'); }
+
+function responsesSheet_() {
+  let id = RESPONSES_SHEET_ID;
+  try { const dest = FormApp.openById(FORM_EDIT_ID).getDestinationId(); if (dest) id = dest; } catch (e) { /* по умолчанию */ }
+  const ss = SpreadsheetApp.openById(id);
+  const linked = ss.getSheets().filter(function (sh) { try { return !!sh.getFormUrl(); } catch (e) { return false; } })[0];
+  return linked || ss.getSheets()[0];
+}
+
+function subsSheet_() {
+  const ss = responsesSheet_().getParent();
+  let sh = ss.getSheetByName(SUBS_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(SUBS_SHEET);
+    sh.getRange(1, 1, 1, SUBS_HEADERS.length).setValues([SUBS_HEADERS]).setFontWeight('bold');
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+function currentSeason_() {
+  const v = Number(PropertiesService.getScriptProperties().getProperty('CURRENT_SEASON'));
+  return v >= 2020 ? v : DEFAULT_SEASON;
+}
+
+function colIndex_(headers) {
+  const idx = {};
+  headers.forEach(function (h, i) {
+    const n = norm_(h);
+    Object.keys(COLS).forEach(function (k) { if (idx[k] === undefined && COLS[k].indexOf(n) !== -1) idx[k] = i; });
+  });
+  return idx;
+}
+
+function keyOf_(name, dob) { return String(name || '').toUpperCase().replace(/\s+/g, ' ').trim() + '|' + dob; }
+
+function fmtDate_(v, pattern) {
+  if (v instanceof Date && !isNaN(v)) return Utilities.formatDate(v, Session.getScriptTimeZone(), pattern);
+  return String(v || '').trim();
+}
+
+// Сезон строки анкеты: по номеру подтверждения, иначе по дате (осень года Y → DV-(Y+2)).
+function seasonOf_(number, ts, current) {
+  const m = String(number || '').match(/^\s*(20\d\d)/);
+  if (m) return Number(m[1]);
+  if (!(ts instanceof Date)) return current;
+  const y = ts.getFullYear() + (ts.getMonth() >= 6 ? 2 : 1);
+  return Math.min(y, current);
+}
+
+/** Все клиенты и подачи для админки. */
+function adminData() {
+  assertOwner_();
+  const current = currentSeason_();
+  const sh = responsesSheet_();
+  const range = sh.getDataRange();
+  const raw = range.getValues();
+  const disp = range.getDisplayValues();
+  const c = colIndex_(disp[0].map(String));
+  const get = function (r, k) { return c[k] === undefined ? '' : String(disp[r][c[k]] || '').trim(); };
+  const rawGet = function (r, k) { return c[k] === undefined ? '' : raw[r][c[k]]; };
+
+  const clients = {};
+  const subs = {};
+  for (let r = 1; r < raw.length; r++) {
+    if (!get(r, 'name')) continue;
+    const ts = rawGet(r, 'ts');
+    const dob = fmtDate_(rawGet(r, 'birth'), 'dd.MM.yyyy');
+    const key = keyOf_(get(r, 'name'), dob);
+    const tsNum = ts instanceof Date ? ts.getTime() : 0;
+    let cl = clients[key];
+    if (!cl || tsNum >= cl.ts) {
+      cl = clients[key] = Object.assign(cl || { rows: [] }, {
+        key: key, ts: tsNum, row: r + 1, date: fmtDate_(ts, 'dd.MM.yyyy'),
+        name: get(r, 'name').toUpperCase().replace(/\s+/g, ' '), sex: get(r, 'sex'), dob: dob,
+        birthCity: get(r, 'birthCity'), birthCountry: get(r, 'birthCountry'),
+        photo: get(r, 'photoNew') && /^https?:/.test(get(r, 'photoNew')) ? get(r, 'photoNew') : get(r, 'photoOld'),
+        address: get(r, 'address'), country: get(r, 'country'), email: get(r, 'email'),
+        education: get(r, 'education'), marital: get(r, 'marital'), children: get(r, 'children'),
+        telegram: get(r, 'telegram'), spouseData: get(r, 'spouseData'), kidsData: get(r, 'kidsData')
+      });
+    }
+    cl.rows.push(r + 1);
+    const number = get(r, 'confirm');
+    const season = seasonOf_(number, ts, current);
+    subs[key] = subs[key] || {};
+    if (!subs[key][season]) {
+      subs[key][season] = {
+        status: number ? 'Подано' : (STATUSES.indexOf(get(r, 'status')) !== -1 ? get(r, 'status') : 'Новая'),
+        paid: '', number: number, result: get(r, 'result'), note: get(r, 'note'),
+        date: fmtDate_(ts, 'dd.MM.yyyy'), ts: tsNum, virtual: true
+      };
+    }
+  }
+
+  // Записи листа «Подачи» главнее собранных из анкеты.
+  const ss = subsSheet_();
+  const sv = ss.getDataRange().getDisplayValues();
+  for (let i = 1; i < sv.length; i++) {
+    const key = sv[i][1], season = Number(sv[i][2]);
+    if (!key || !season) continue;
+    subs[key] = subs[key] || {};
+    const prev = subs[key][season] || {};
+    subs[key][season] = {
+      status: sv[i][3] || 'Новая', paid: sv[i][4], number: sv[i][5], result: sv[i][6], note: sv[i][7],
+      date: prev.date || '', ts: prev.ts || 0, virtual: false
+    };
+  }
+
+  const list = Object.keys(clients).map(function (k) { return clients[k]; });
+  return {
+    current: current, clients: list, subs: subs,
+    sheetUrl: sh.getParent().getUrl(), folderUrl: photoFolder_().getUrl()
+  };
+}
+
+function findSubRow_(sh, key, season) {
+  const v = sh.getDataRange().getValues();
+  for (let i = 1; i < v.length; i++) if (v[i][1] === key && Number(v[i][2]) === Number(season)) return i + 1;
+  return 0;
+}
+
+/** Сохранить подачу клиента за сезон (статус, оплата, номер, результат, заметка). */
+function adminSaveSub(key, name, row, season, sub) {
+  assertOwner_();
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const sh = subsSheet_();
+    const status = STATUSES.indexOf(sub.status) !== -1 ? sub.status : 'Новая';
+    const values = [String(name), String(key), Number(season), status,
+      String(sub.paid || '').slice(0, 200), String(sub.number || '').slice(0, 60),
+      String(sub.result || '').slice(0, 60), String(sub.note || '').slice(0, 1000), Number(row) || '', new Date()];
+    const at = findSubRow_(sh, key, season);
+    if (at) sh.getRange(at, 1, 1, values.length).setValues([values]);
+    else sh.appendRow(values);
+    return true;
+  } finally { lock.releaseLock(); }
+}
+
+/** Добавить клиентов в сезон со статусом «Новая». list: [{key, name, row}] */
+function adminAddToSeason(list, season) {
+  assertOwner_();
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const sh = subsSheet_();
+    const rows = [];
+    (list || []).forEach(function (c) {
+      if (findSubRow_(sh, c.key, season)) return;
+      rows.push([String(c.name), String(c.key), Number(season), 'Новая', '', '', '', '', Number(c.row) || '', new Date()]);
+    });
+    if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);
+    return rows.length;
+  } finally { lock.releaseLock(); }
+}
+
+function adminSetCurrentSeason(season) {
+  assertOwner_();
+  season = Number(season);
+  if (!(season >= 2020 && season <= 2100)) throw new Error('Неверный сезон');
+  PropertiesService.getScriptProperties().setProperty('CURRENT_SEASON', String(season));
+  return season;
+}
+
+function savePhotoFile_(photo, label) {
+  if (!photo || !photo.data) return '';
+  const bytes = Utilities.base64Decode(photo.data);
+  if (bytes.length > MAX_PHOTO_BYTES) throw new Error('Фото слишком большое');
+  const mime = /^image\/(jpeg|png)$/.test(photo.mime) ? photo.mime : 'image/jpeg';
+  const stamp = Utilities.formatDate(new Date(), 'America/Los_Angeles', 'yyyy-MM-dd HH-mm');
+  const clean = String(label || 'BEZ IMENI').toUpperCase().replace(/[^A-Z0-9 \-()]/g, '').trim();
+  return photoFolder_().createFile(Utilities.newBlob(bytes, mime, clean + ' — ' + stamp + (mime === 'image/png' ? '.png' : '.jpg'))).getUrl();
+}
+
+/** Добавить супруга(у) или ребёнка в анкету клиента. p: {name, sex, dob:'dd.mm.yyyy', city, country, photo?} */
+function adminAddMember(row, kind, p) {
+  assertOwner_();
+  row = Number(row);
+  const sh = responsesSheet_();
+  if (!(row >= 2 && row <= sh.getLastRow())) throw new Error('Нет такой строки');
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0];
+  const c = colIndex_(headers);
+  const col = kind === 'spouse' ? c.spouseData : c.kidsData;
+  if (col === undefined) throw new Error('В таблице нет колонки для данных семьи — запустите setupFamily()');
+  const applicant = String(sh.getRange(row, c.name + 1).getDisplayValue()).toUpperCase();
+  const url = savePhotoFile_(p.photo, String(p.name || '') + (kind === 'spouse' ? ' (SPOUSE OF ' : ' (CHILD OF ') + applicant + ')');
+  const line = [String(p.name || '').trim().toUpperCase().slice(0, 200), String(p.sex || '').slice(0, 2), String(p.dob || '').slice(0, 10),
+    String(p.city || '').trim().toUpperCase().slice(0, 100), String(p.country || '').trim().toUpperCase().slice(0, 100),
+    'фото: ' + (url || 'пришлёт в Telegram')].join(', ');
+  const cell = sh.getRange(row, col + 1);
+  const before = String(cell.getValue() || '').trim();
+  if (kind === 'spouse') {
+    cell.setValue(line);
+    if (c.marital !== undefined) sh.getRange(row, c.marital + 1).setValue('Женат / замужем');
+  } else {
+    const n = before ? before.split('\n').filter(String).length + 1 : 1;
+    cell.setValue((before ? before + '\n' : '') + n + '. ' + line);
+    if (c.children !== undefined) sh.getRange(row, c.children + 1).setValue('Да, ' + n);
+  }
+  return line;
+}
+
+/** Обновить фото заявителя из админки. */
+function adminSetPhoto(row, photo) {
+  assertOwner_();
+  row = Number(row);
+  const sh = responsesSheet_();
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0];
+  const c = colIndex_(headers);
+  if (c.photoNew === undefined) throw new Error('Нет колонки «Фотография»');
+  const name = String(sh.getRange(row, c.name + 1).getDisplayValue());
+  const url = savePhotoFile_(photo, name);
+  sh.getRange(row, c.photoNew + 1).setValue(url);
+  return url;
+}
+
+function adminPage_() {
+  if (!isOwner_()) {
+    return HtmlService.createHtmlOutput(
+      '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+      '<div style="font:16px system-ui;max-width:420px;margin:15vh auto;padding:0 20px;color:#142140">' +
+      '<h2 style="margin:0 0 12px">Нет доступа</h2>' +
+      '<p>Админка открывается только владельцу. Войдите в Google как владелец и откройте ссылку снова.</p></div>'
+    ).setTitle('DV Lottery — админка');
+  }
+  return HtmlService.createHtmlOutput(ADMIN_HTML)
+    .setTitle('Заявки DV Lottery')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
