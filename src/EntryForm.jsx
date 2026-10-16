@@ -2,43 +2,73 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ENTRY, FORM_POST_URL, INTAKE_URL, TELEGRAM } from "./config.js";
 import { MONTHS, MONTHS_GEN, OPTIONS } from "./content.js";
 
+const MARRIED = "Женат / замужем";
+const emptyPerson = () => ({ name: "", sex: "", bd: "", bm: "", by: "", birthCity: "", birthCountry: "", photo: null });
+
 const EMPTY = {
   name: "", sex: "", bd: "", bm: "", by: "", birthCity: "", birthCountry: "",
   photoLater: false, address: "", country: "", email: "", telegram: "",
-  education: "", marital: "", children: "",
+  education: "", marital: "", hasKids: "", spouse: emptyPerson(), kids: [],
 };
 
 const LATIN = /^[A-Za-z][A-Za-z .'\-]*$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const CAN_UPLOAD = Boolean(INTAKE_URL);
 
-// Какие поля на каком шаге
 const STEP_FIELDS = [
   ["name", "sex", "birth", "birthCity", "birthCountry"],
   ["photo"],
   ["address", "country", "email", "telegram"],
-  ["education", "marital", "children"],
+  ["education", "marital", "family"],
   [],
 ];
+
+function validDate(day, m, y) {
+  const now = new Date().getFullYear();
+  day = +day; m = +m; y = +y;
+  return day >= 1 && day <= 31 && m >= 1 && m <= 12 && y >= now - 110 && y <= now && new Date(y, m - 1, day).getDate() === day;
+}
+
+function ageOn(p, date = new Date()) {
+  const b = new Date(+p.by, +p.bm - 1, +p.bd);
+  let a = date.getFullYear() - b.getFullYear();
+  if (date.getMonth() < b.getMonth() || (date.getMonth() === b.getMonth() && date.getDate() < b.getDate())) a--;
+  return a;
+}
+
+// Проверка данных человека (супруг(а) или ребёнок). Ключи ошибок: prefix + поле.
+function validatePerson(p, prefix, t, isKid) {
+  const e = {};
+  ["name", "birthCity", "birthCountry"].forEach((k) => {
+    const v = String(p[k] || "").trim();
+    if (!v) e[prefix + k] = t.required; else if (!LATIN.test(v)) e[prefix + k] = t.latin;
+  });
+  if (!p.sex) e[prefix + "sex"] = t.required;
+  if (!validDate(p.bd, p.bm, p.by)) e[prefix + "birth"] = t.date;
+  else if (isKid && ageOn(p) >= 21) e[prefix + "birth"] = t.family.tooOld;
+  return e;
+}
 
 function validate(f, d, t, photo) {
   const e = {};
   const req = (k) => { if (!String(d[k] ?? "").trim()) e[k] = t.required; };
   switch (f) {
-    case "name": case "birthCity": case "birthCountry":
+    case "name": case "birthCity": case "birthCountry": case "country":
       req(f); if (!e[f] && !LATIN.test(d[f].trim())) e[f] = t.latin; break;
-    case "country":
-      req(f); if (!e[f] && !LATIN.test(d[f].trim())) e[f] = t.latin; break;
-    case "birth": {
-      const day = +d.bd, m = +d.bm, y = +d.by, now = new Date().getFullYear();
-      const ok = day >= 1 && day <= 31 && m >= 1 && m <= 12 && y >= now - 110 && y <= now
-        && new Date(y, m - 1, day).getDate() === day;
-      if (!ok) e.birth = t.date; break;
-    }
+    case "birth":
+      if (!validDate(d.bd, d.bm, d.by)) e.birth = t.date; break;
     case "photo":
       if (CAN_UPLOAD && !photo && !d.photoLater) e.photo = t.required; break;
     case "email":
       req(f); if (!e[f] && !EMAIL.test(d.email.trim())) e[f] = t.email; break;
+    case "family":
+      if (d.marital === MARRIED) Object.assign(e, validatePerson(d.spouse, "spouse.", t, false));
+      if (!d.hasKids) e.hasKids = t.required;
+      if (d.hasKids === "yes") {
+        if (!d.kids.length) e.hasKids = t.family.addOne;
+        d.kids.forEach((k, i) => Object.assign(e, validatePerson(k, `kid${i}.`, t, true)));
+      }
+      break;
     default: req(f);
   }
   return e;
@@ -57,15 +87,30 @@ async function prepareImage(file) {
   } finally { URL.revokeObjectURL(url); }
 }
 
+const photoPayload = (dataUrl) => (dataUrl ? { mime: "image/jpeg", data: dataUrl.split(",")[1] } : null);
+const personPayload = (p) => ({
+  name: p.name.trim().toUpperCase(), sex: p.sex, birth: { d: p.bd, m: p.bm, y: p.by },
+  birthCity: p.birthCity.trim().toUpperCase(), birthCountry: p.birthCountry.trim().toUpperCase(),
+  photo: photoPayload(p.photo),
+});
+const childrenText = (d) => (d.hasKids === "yes" ? `Да, ${d.kids.length}` : "Нет");
+const pad = (n) => String(n).padStart(2, "0");
+const personLine = (p) => `${p.name.trim().toUpperCase()}, ${p.sex}, ${pad(p.bd)}.${pad(p.bm)}.${p.by}, ${p.birthCity.trim().toUpperCase()}, ${p.birthCountry.trim().toUpperCase()}`;
+
 // Отправка через скрипт: фото + ответ в форму одним запросом, с подтверждением.
 async function sendToScript(d, photo) {
+  const married = d.marital === MARRIED;
   const res = await fetch(INTAKE_URL, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: JSON.stringify({
-      ...d,
+      name: d.name, sex: d.sex, birthCity: d.birthCity, birthCountry: d.birthCountry,
+      address: d.address, country: d.country, email: d.email, telegram: d.telegram,
+      education: d.education, marital: d.marital, children: childrenText(d),
       birth: { d: d.bd, m: d.bm, y: d.by },
-      photo: photo ? { mime: "image/jpeg", data: photo.split(",")[1] } : null,
+      photo: photoPayload(photo),
+      spouse: married ? personPayload(d.spouse) : null,
+      kids: d.hasKids === "yes" ? d.kids.map(personPayload) : [],
       website: "",
     }),
   });
@@ -76,6 +121,11 @@ async function sendToScript(d, photo) {
 
 // Запасной путь: прямой POST в Google Form (ответ непрозрачный, без фото).
 async function sendToForm(d) {
+  const family = [
+    childrenText(d),
+    d.marital === MARRIED ? "Супруг(а): " + personLine(d.spouse) : "",
+    ...(d.hasKids === "yes" ? d.kids.map((k, i) => `Ребёнок ${i + 1}: ` + personLine(k)) : []),
+  ].filter(Boolean).join(" | ");
   const body = new URLSearchParams();
   body.append(ENTRY.name, d.name.trim().toUpperCase());
   body.append(ENTRY.sex, d.sex);
@@ -90,7 +140,7 @@ async function sendToForm(d) {
   body.append(ENTRY.email, d.email.trim());
   body.append(ENTRY.education, d.education);
   body.append(ENTRY.marital, d.marital);
-  body.append(ENTRY.children, d.children.trim());
+  body.append(ENTRY.children, family);
   body.append(ENTRY.telegram, d.telegram.trim());
   await fetch(FORM_POST_URL, { method: "POST", mode: "no-cors", body });
 }
@@ -119,26 +169,105 @@ function Choice({ name, options, value, onChange, lang, columns }) {
   );
 }
 
+function DateInput({ id, p, onChange, lang, f }) {
+  return (
+    <div className="date-row">
+      <input id={id} inputMode="numeric" maxLength={2} placeholder={f.birth.d} aria-label={f.birth.d} value={p.bd} onChange={(e) => onChange("bd", e.target.value.replace(/\D/g, ""))} />
+      <select aria-label={f.birth.m} value={p.bm} onChange={(e) => onChange("bm", e.target.value)}>
+        <option value="">{f.birth.m}</option>
+        {MONTHS[lang].map((m, i) => <option key={m} value={String(i + 1)}>{m}</option>)}
+      </select>
+      <input inputMode="numeric" maxLength={4} placeholder={f.birth.y} aria-label={f.birth.y} value={p.by} onChange={(e) => onChange("by", e.target.value.replace(/\D/g, ""))} />
+    </div>
+  );
+}
+
+// Блок данных другого человека: супруг(а) или ребёнок.
+function PersonFields({ prefix, p, onChange, errors, t, lang, onPhotoError }) {
+  const f = t.fields, fm = t.family;
+  const id = (k) => prefix.replace(/\W/g, "") + "-" + k;
+  const err = (k) => errors[prefix + k];
+  const onPhoto = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try { onChange("photo", await prepareImage(file)); } catch { onPhotoError(t.photoType); }
+  };
+  return (
+    <div className="person-fields">
+      <Field id={id("name")} label={f.name.l} hint={f.name.h} error={err("name")}>
+        <input id={id("name")} value={p.name} onChange={(e) => onChange("name", e.target.value.toUpperCase())} placeholder={fm.namePh} />
+      </Field>
+      <Field id={id("sex")} label={f.sex.l} error={err("sex")}>
+        <Choice name={id("sex")} options={OPTIONS.sex} value={p.sex} onChange={(v) => onChange("sex", v)} lang={lang} columns={2} />
+      </Field>
+      <Field id={id("bd")} label={f.birth.l} error={err("birth")}>
+        <DateInput id={id("bd")} p={p} onChange={onChange} lang={lang} f={f} />
+      </Field>
+      <div className="two-col">
+        <Field id={id("city")} label={f.birthCity.l} error={err("birthCity")}>
+          <input id={id("city")} value={p.birthCity} onChange={(e) => onChange("birthCity", e.target.value.toUpperCase())} placeholder={f.birthCity.p} />
+        </Field>
+        <Field id={id("country")} label={f.birthCountry.l} error={err("birthCountry")}>
+          <input id={id("country")} value={p.birthCountry} onChange={(e) => onChange("birthCountry", e.target.value.toUpperCase())} placeholder={f.birthCountry.p} />
+        </Field>
+      </div>
+      <div className="field">
+        <span className="field-label">{fm.photo}</span>
+        <div className="mini-photo">
+          <div className="mini-frame">{p.photo ? <img src={p.photo} alt="" /> : <svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="48" r="20" fill="none" stroke="currentColor" strokeWidth="2" /><path d="M24 104c6-20 20-30 36-30s30 10 36 30" fill="none" stroke="currentColor" strokeWidth="2" /></svg>}</div>
+          <div>
+            {CAN_UPLOAD && (
+              <label className="btn btn-ghost file-btn">
+                <input type="file" accept="image/*,.heic,.heif" onChange={onPhoto} />
+                {p.photo ? fm.photoChange : fm.photoPick}
+              </label>
+            )}
+            <p className="field-hint">{fm.photoLater}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function EntryForm({ lang, t }) {
   const [step, setStep] = useState(0);
   const [d, setD] = useState(EMPTY);
   const [errors, setErrors] = useState({});
-  const [photo, setPhoto] = useState(null);        // dataURL
+  const [photo, setPhoto] = useState(null);        // dataURL фото заявителя
   const [state, setState] = useState("idle");      // idle | sending | done | error
   const [errMsg, setErrMsg] = useState("");
-  const [sentPhotoLater, setSentPhotoLater] = useState(false);
+  const [missingPhotos, setMissingPhotos] = useState([]);
   const [last, setLast] = useState(null);          // что отправили — для подсказок после отправки
+  const [lastPhoto, setLastPhoto] = useState(null);
   const [sibling, setSibling] = useState("");      // "" | "yes" | "no"
   const [copied, setCopied] = useState(false);
   const top = useRef(null);
-  const f = t.fields;
+  const f = t.fields, fm = t.family;
 
+  const clearErr = (...keys) => setErrors((p) => { const n = { ...p }; keys.forEach((k) => delete n[k]); return n; });
   const set = (k) => (v) => {
     const val = typeof v === "object" && v?.target ? v.target.value : v;
     setD((p) => ({ ...p, [k]: val }));
-    setErrors((p) => { const n = { ...p }; delete n[k]; if (["bd", "bm", "by"].includes(k)) delete n.birth; return n; });
+    clearErr(k, ...(["bd", "bm", "by"].includes(k) ? ["birth"] : []));
   };
   const upper = (k) => (e) => set(k)(e.target.value.toUpperCase());
+
+  const setSpouse = (k, v) => {
+    setD((p) => ({ ...p, spouse: { ...p.spouse, [k]: v } }));
+    clearErr("spouse." + k, ...(["bd", "bm", "by"].includes(k) ? ["spouse.birth"] : []));
+  };
+  const setKid = (i) => (k, v) => {
+    setD((p) => ({ ...p, kids: p.kids.map((x, j) => (j === i ? { ...x, [k]: v } : x)) }));
+    clearErr(`kid${i}.` + k, ...(["bd", "bm", "by"].includes(k) ? [`kid${i}.birth`] : []));
+  };
+  const addKid = () => { setD((p) => ({ ...p, kids: [...p.kids, emptyPerson()] })); clearErr("hasKids"); };
+  const removeKid = (i) => { setD((p) => ({ ...p, kids: p.kids.filter((_, j) => j !== i) })); setErrors({}); };
+  const setHasKids = (v) => {
+    setD((p) => ({ ...p, hasKids: v, kids: v === "yes" && !p.kids.length ? [emptyPerson()] : p.kids }));
+    clearErr("hasKids");
+  };
 
   useEffect(() => { setErrors({}); }, [lang]);
 
@@ -148,7 +277,10 @@ export default function EntryForm({ lang, t }) {
     const e = Object.assign({}, ...STEP_FIELDS[s].map((k) => validate(k, d, t, photo)));
     setErrors(e);
     if (Object.keys(e).length) {
-      requestAnimationFrame(() => document.querySelector(".has-error input, .has-error textarea, .has-error select")?.focus());
+      requestAnimationFrame(() => {
+        const el = document.querySelector(".has-error input, .has-error textarea, .has-error select");
+        el?.focus(); el?.scrollIntoView({ block: "center" });
+      });
       return false;
     }
     return true;
@@ -171,22 +303,23 @@ export default function EntryForm({ lang, t }) {
 
   const submit = async () => {
     setState("sending"); setErrMsg("");
-    const withPhoto = CAN_UPLOAD && photo && !d.photoLater;
+    const married = d.marital === MARRIED;
+    const kids = d.hasKids === "yes" ? d.kids : [];
+    const ownPhoto = CAN_UPLOAD && photo && !d.photoLater ? photo : null;
     try {
+      let viaScript = false;
       if (INTAKE_URL) {
-        try {
-          const r = await sendToScript(d, withPhoto ? photo : null);
-          setSentPhotoLater(!r.photo);
-        } catch {
-          // Скрипт недоступен — анкета всё равно уходит в форму, фото клиент пришлёт в Telegram.
-          await sendToForm(d);
-          setSentPhotoLater(true);
-        }
+        try { await sendToScript(d, ownPhoto); viaScript = true; } catch { await sendToForm(d); }
       } else {
         await sendToForm(d);
-        setSentPhotoLater(true);
       }
-      setLast(d);
+      // Чьих фото не хватает — напомним прислать в Telegram.
+      const miss = [];
+      if (!viaScript || !ownPhoto) miss.push(d.name.trim().toUpperCase());
+      if (married && (!viaScript || !d.spouse.photo)) miss.push(d.spouse.name.trim().toUpperCase());
+      kids.forEach((k) => { if (!viaScript || !k.photo) miss.push(k.name.trim().toUpperCase()); });
+      setMissingPhotos(miss);
+      setLast(d); setLastPhoto(ownPhoto);
       setSibling(""); setCopied(false);
       setState("done");
       scrollTop();
@@ -195,13 +328,19 @@ export default function EntryForm({ lang, t }) {
     }
   };
 
-  const restart = (prefill = {}) => { setD({ ...EMPTY, ...prefill }); setPhoto(null); setStep(0); setState("idle"); setErrors({}); scrollTop(); };
-  // Анкета на супруга(у): адрес, страна, Telegram и семейное положение уже заполнены.
-  const restartForSpouse = () => restart({
-    address: last?.address || "", country: last?.country || "", telegram: last?.telegram || "",
-    marital: last?.marital || "", children: last?.children || "",
-    sex: last?.sex === "М" ? "Ж" : last?.sex === "Ж" ? "М" : "",
-  });
+  const restart = (prefill = {}, newPhoto = null) => {
+    setD({ ...EMPTY, spouse: emptyPerson(), kids: [], ...prefill }); setPhoto(newPhoto); setStep(0); setState("idle"); setErrors({}); scrollTop();
+  };
+  // Анкета на супруга(у): его/её данные становятся основными, а заявитель — супругом. Дети и контакты переносятся.
+  const restartForSpouse = () => {
+    const l = last, s = l.spouse;
+    restart({
+      name: s.name, sex: s.sex, bd: s.bd, bm: s.bm, by: s.by, birthCity: s.birthCity, birthCountry: s.birthCountry,
+      address: l.address, country: l.country, telegram: l.telegram, marital: l.marital, hasKids: l.hasKids,
+      kids: l.kids.map((k) => ({ ...k })),
+      spouse: { name: l.name, sex: l.sex, bd: l.bd, bm: l.bm, by: l.by, birthCity: l.birthCity, birthCountry: l.birthCountry, photo: lastPhoto },
+    }, s.photo);
+  };
 
   const siteUrl = typeof window !== "undefined" ? window.location.href.split("#")[0] : "";
   const shareText = t.share.text;
@@ -210,10 +349,12 @@ export default function EntryForm({ lang, t }) {
   };
 
   const label = (list, v) => list.find((o) => o.value === v)?.[lang] || v;
+  const dateText = (p) => (p.bd && p.bm && p.by ? `${p.bd} ${MONTHS_GEN[lang][+p.bm - 1]} ${p.by}` : "");
+  const personSummary = (p) => [p.name.toUpperCase(), label(OPTIONS.sex, p.sex), dateText(p), [p.birthCity, p.birthCountry].filter(Boolean).join(", ").toUpperCase(), p.photo ? fm.photoYes : fm.photoNo].filter(Boolean).join("\n");
   const review = useMemo(() => [
     { s: 0, k: f.name.l, v: d.name.toUpperCase() },
     { s: 0, k: f.sex.l, v: label(OPTIONS.sex, d.sex) },
-    { s: 0, k: f.birth.l, v: d.bd && d.bm && d.by ? `${d.bd} ${MONTHS_GEN[lang][+d.bm - 1]} ${d.by}` : "" },
+    { s: 0, k: f.birth.l, v: dateText(d) },
     { s: 0, k: f.birthCity.l, v: d.birthCity.toUpperCase() },
     { s: 0, k: f.birthCountry.l, v: d.birthCountry.toUpperCase() },
     { s: 1, k: f.photo.l, v: photo && !d.photoLater ? "✓" : f.photo.later },
@@ -223,18 +364,19 @@ export default function EntryForm({ lang, t }) {
     { s: 2, k: f.telegram.l, v: d.telegram },
     { s: 3, k: f.education.l, v: label(OPTIONS.education, d.education) },
     { s: 3, k: f.marital.l, v: label(OPTIONS.marital, d.marital) },
-    { s: 3, k: f.children.l, v: d.children },
+    ...(d.marital === MARRIED ? [{ s: 3, k: fm.spouseShort, v: personSummary(d.spouse) }] : []),
+    ...(d.hasKids === "yes" ? d.kids.map((k, i) => ({ s: 3, k: fm.kid(i + 1), v: personSummary(k) })) : [{ s: 3, k: fm.kidsShort, v: d.hasKids === "no" ? fm.no : "" }]),
   ], [d, photo, lang, t]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (state === "done") {
-    const married = last?.marital === "Женат / замужем";
+    const married = last?.marital === MARRIED;
     return (
       <div className="form-card done-card" ref={top} tabIndex={-1}>
         <div className="done">
           <div className="done-mark" aria-hidden="true">✓</div>
           <h3>{t.done.t}</h3>
           <p>{t.done.d}</p>
-          {sentPhotoLater && <p className="done-photo">{t.done.photo}</p>}
+          {missingPhotos.length > 0 && <p className="done-photo">{t.done.photo} {missingPhotos.length > 1 ? "(" + missingPhotos.join(", ") + ")" : ""}</p>}
           <div className="done-actions">
             <a className="btn btn-primary" href={`https://t.me/${TELEGRAM}`} target="_blank" rel="noopener">{t.done.tg}</a>
           </div>
@@ -297,14 +439,7 @@ export default function EntryForm({ lang, t }) {
               <Choice name="sex" options={OPTIONS.sex} value={d.sex} onChange={set("sex")} lang={lang} columns={2} />
             </Field>
             <Field id="bd" label={f.birth.l} error={errors.birth}>
-              <div className="date-row">
-                <input id="bd" inputMode="numeric" maxLength={2} placeholder={f.birth.d} aria-label={f.birth.d} value={d.bd} onChange={(e) => set("bd")(e.target.value.replace(/\D/g, ""))} />
-                <select aria-label={f.birth.m} value={d.bm} onChange={set("bm")}>
-                  <option value="">{f.birth.m}</option>
-                  {MONTHS[lang].map((m, i) => <option key={m} value={String(i + 1)}>{m}</option>)}
-                </select>
-                <input inputMode="numeric" maxLength={4} placeholder={f.birth.y} aria-label={f.birth.y} value={d.by} onChange={(e) => set("by")(e.target.value.replace(/\D/g, ""))} />
-              </div>
+              <DateInput id="bd" p={d} onChange={(k, v) => set(k)(v)} lang={lang} f={f} />
             </Field>
             <Field id="birthCity" label={f.birthCity.l} hint={f.birthCity.h} error={errors.birthCity}>
               <input id="birthCity" value={d.birthCity} onChange={upper("birthCity")} placeholder={f.birthCity.p} />
@@ -366,11 +501,35 @@ export default function EntryForm({ lang, t }) {
             </Field>
             <Field id="marital" label={f.marital.l} error={errors.marital}>
               <Choice name="marital" options={OPTIONS.marital} value={d.marital} onChange={set("marital")} lang={lang} columns={2} />
-              {d.marital === "Женат / замужем" && <p className="note">{t.spouse.hint}</p>}
             </Field>
-            <Field id="children" label={f.children.l} hint={f.children.h} error={errors.children}>
-              <textarea id="children" rows={2} value={d.children} onChange={set("children")} placeholder={f.children.p} />
+
+            {d.marital === MARRIED && (
+              <section className="sub-block">
+                <h4>{fm.spouseTitle}</h4>
+                <p className="sub-hint">{fm.spouseHint}</p>
+                <p className="note">{t.spouse.hint}</p>
+                <PersonFields prefix="spouse." p={d.spouse} onChange={setSpouse} errors={errors} t={t} lang={lang} onPhotoError={(m) => setErrors((e) => ({ ...e, "spouse.photo": m }))} />
+              </section>
+            )}
+
+            <Field id="hasKids" label={fm.kidsQ} hint={fm.kidsHint} error={errors.hasKids}>
+              <Choice name="hasKids" options={[{ value: "yes", ru: fm.yes, en: fm.yes }, { value: "no", ru: fm.no, en: fm.no }]} value={d.hasKids} onChange={setHasKids} lang={lang} columns={2} />
             </Field>
+
+            {d.hasKids === "yes" && (
+              <>
+                {d.kids.map((k, i) => (
+                  <section className="sub-block" key={i}>
+                    <header className="sub-head">
+                      <h4>{fm.kid(i + 1)}</h4>
+                      {d.kids.length > 1 && <button type="button" className="link" onClick={() => removeKid(i)}>{fm.remove}</button>}
+                    </header>
+                    <PersonFields prefix={`kid${i}.`} p={k} onChange={setKid(i)} errors={errors} t={t} lang={lang} onPhotoError={(m) => setErrors((e) => ({ ...e, [`kid${i}.photo`]: m }))} />
+                  </section>
+                ))}
+                <button type="button" className="btn btn-ghost add-kid" onClick={addKid}>+ {fm.add}</button>
+              </>
+            )}
           </div>
         )}
 

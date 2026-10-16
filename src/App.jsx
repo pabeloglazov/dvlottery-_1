@@ -84,7 +84,6 @@ export default function App() {
                 <a className="btn btn-primary btn-lg" href="#form">{t.hero.cta}</a>
                 <a className="btn btn-ghost btn-lg" href={tg} target="_blank" rel="noopener">{t.hero.secondary}</a>
               </div>
-              <p className="hero-price"><b>{PRICES.ru}</b> / <b>{PRICES.us}</b> — {t.hero.note}</p>
             </div>
             <Ticket t={t.ticket} />
           </div>
