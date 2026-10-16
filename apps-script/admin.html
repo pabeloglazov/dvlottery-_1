@@ -111,6 +111,7 @@ h1{margin:2px 0 0;font-size:30px;font-weight:800;letter-spacing:-.02em;line-heig
 .copy.ok .c{border-color:var(--green);color:var(--green)}
 .form-box{display:flex;flex-direction:column;gap:10px;padding:14px;margin-top:10px;border-radius:12px;background:#f7f9fb;border:1px solid var(--line)}
 .notice{border-radius:14px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.notice{background:#fff;border:1px solid var(--line)}
 .notice.amber{background:#fbf0d9;border:1px solid #f0dcb0}
 .back{display:none;align-self:flex-start;border:0;background:none;padding:0;color:var(--green);font-weight:600}
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;box-shadow:0 10px 30px -10px rgba(0,0,0,.5);z-index:60;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw}
@@ -349,7 +350,7 @@ function renderNav(y) {
   var item = function (key, label, n, extra) {
     return '<button class="nav-item' + (S.view === key ? ' on' : '') + '" data-act="view" data-v="' + key + '"><span>' + (extra || '') + esc(label) + '</span>' + n + '</button>';
   };
-  var inv = inviteList(y).length;
+  var inv = inviteList(S.data.current).length;
   var h = '<nav class="nav" aria-label="Разделы"><div class="nav-top"><div class="brand"><span class="mark">GC</span>Green Card</div>' +
     '<div class="season"><button class="season-btn" data-act="menu" aria-expanded="' + S.menu + '"><span><small>Сезон</small><b>DV-' + y + '</b></span><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>';
   if (S.menu) {
@@ -369,7 +370,7 @@ function renderNav(y) {
 
 function listSource(y) {
   var v = S.view, src, title;
-  if (v === 'invite') { src = inviteList(y); title = 'Пригласить снова'; }
+  if (v === 'invite') { src = inviteList(S.data.current); title = 'Пригласить в DV-' + S.data.current; }
   else if (v === 'won') { src = wonList(); title = 'Выиграли'; }
   else if (v === 'everyone') { src = S.data.clients.slice(); title = 'Все клиенты'; }
   else if (v === 'all') { src = inSeason(y); title = 'Все в сезоне'; }
@@ -389,7 +390,7 @@ function renderList(y, sel) {
   var L = listSource(y);
   var h = '<aside class="list" aria-label="Клиенты"><div class="list-head"><div class="list-title"><h2>' + esc(L.title) + '</h2><span class="muted">' + L.src.length + ' ' + plural(L.src.length, 'клиент', 'клиента', 'клиентов') + '</span></div>' +
     '<label class="search"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg><input id="q" aria-label="Поиск" placeholder="Имя, Telegram, номер" value="' + esc(S.q) + '"></label></div>';
-  if (S.view === 'invite' && L.src.length) h += '<div class="list-action"><button class="btn pri" style="width:100%" data-act="inviteAll">Добавить всех ' + L.src.length + ' в DV-' + y + '</button></div>';
+  if (S.view === 'invite' && L.src.length) h += '<div class="list-action"><button class="btn pri" style="width:100%" data-act="inviteAll">Добавить всех ' + L.src.length + ' в DV-' + S.data.current + '</button></div>';
   h += '<div class="list-body">';
   if (!L.src.length) h += '<div class="empty">' + (S.q ? 'Никого не нашёл' : 'Здесь пока пусто') + '</div>';
   L.src.forEach(function (c) {
@@ -406,7 +407,7 @@ function renderOverview(y) {
   var ins = inSeason(y), counts = {};
   STATUSES.forEach(function (s) { counts[s] = 0; });
   ins.forEach(function (c) { counts[stOf(c, y)]++; });
-  var total = ins.length || 1, inv = inviteList(y);
+  var total = ins.length || 1, inv = inviteList(S.data.current);
   var paid = ins.filter(function (c) { return stOf(c, y) === 'Оплачено'; });
   var fresh = ins.filter(function (c) { return stOf(c, y) === 'Новая'; }).sort(function (a, b) { return (sub(b, y).ts || b.ts) - (sub(a, y).ts || a.ts); });
   var sub2 = { 'Новая': 'ответить в Telegram', 'Связался': 'ждут оплату', 'Оплачено': 'можно подавать', 'Подано': 'номер получен' };
@@ -431,7 +432,7 @@ function renderOverview(y) {
   h += '</div>';
   h += block('Подавались раньше — пригласить снова', inv.length, inv, 'Все прошлые клиенты уже в этом сезоне.', {
     view: 'invite', meta: function (c) { return seasonsOf(c).map(function (s) { return 'DV-' + s; }).join(', ') + ' · ' + (c.telegram || ''); },
-    html: function (c) { return '<button class="btn sm soft" data-act="add" data-v="' + esc(c.key) + '">В DV-' + y + '</button>'; } });
+    html: function (c) { return '<button class="btn sm soft" data-act="add" data-y="' + S.data.current + '" data-v="' + esc(c.key) + '">В DV-' + S.data.current + '</button>'; } });
   return h;
 }
 
@@ -458,7 +459,14 @@ function renderCard(c, y) {
       (idx < 3 ? '<button class="btn dark" data-act="next">Дальше: ' + STATUSES[idx + 1] + ' →</button>' : '') +
       (idx === 3 ? '<span style="font-weight:600;color:var(--greenInk);margin-right:6px">Результат:</span><button class="btn sm' + (s.result === 'Выиграл' ? ' pri' : '') + '" data-act="result" data-v="Выиграл">Выиграл</button><button class="btn sm' + (s.result === 'Не выиграл' ? ' dark' : '') + '" data-act="result" data-v="Не выиграл">Не выиграл</button>' + (s.result ? '<button class="btn sm" data-act="result" data-v="">Сбросить</button>' : '') : '') +
       '</div></section>';
-  } else {
+  }
+  var cy = S.data.current;
+  if (s && y !== cy && !won(c)) {
+    h += sub(c, cy)
+      ? '<div class="notice"><span><b>Уже в DV-' + cy + '</b> · ' + esc(sub(c, cy).status) + '</span><button class="btn sm" data-act="season" data-keep="1" data-v="' + cy + '">Перейти в DV-' + cy + '</button></div>'
+      : '<div class="notice amber"><span><b>Пригласить в новый сезон?</b><br><span class="muted" style="color:#6b5420">В DV-' + cy + ' заявки пока нет</span></span><button class="btn pri" data-act="add" data-y="' + cy + '" data-v="' + esc(c.key) + '">Пригласить в DV-' + cy + '</button></div>';
+  }
+  if (!s) {
     h += '<div class="notice amber"><span><b>В сезоне DV-' + y + ' заявки нет</b><br><span class="muted" style="color:#6b5420">' + (seasons.length ? 'Подавался: ' + seasons.map(function (x) { return 'DV-' + x; }).join(', ') : '') + '</span></span><button class="btn pri" data-act="add" data-v="' + esc(c.key) + '">Добавить в DV-' + y + '</button></div>';
   }
 
@@ -515,7 +523,7 @@ document.addEventListener('click', function (e) {
   if (a === 'logout') { e.preventDefault(); logout(); return; }
   if (!S.data) return;
   if (a === 'menu') { S.menu = !S.menu; render(); }
-  else if (a === 'season') { S.season = Number(v); S.menu = false; S.sel = null; S.view = 'all'; render(); }
+  else if (a === 'season') { var keep = el.hasAttribute('data-keep'); S.season = Number(v); S.menu = false; if (!keep) S.sel = null; S.view = 'all'; render(); window.scrollTo(0, 0); }
   else if (a === 'newSeason') {
     S.menu = false;
     if (!confirm('Сделать DV-' + v + ' текущим сезоном? Новые анкеты будут попадать в него.')) { render(); return; }
@@ -524,8 +532,8 @@ document.addEventListener('click', function (e) {
   else if (a === 'view') { S.view = v; S.sel = null; S.fam = null; render(); window.scrollTo(0, 0); }
   else if (a === 'open') { S.sel = v; S.fam = null; S.del = null; render(); window.scrollTo(0, 0); }
   else if (a === 'close') { S.sel = null; S.fam = null; render(); }
-  else if (a === 'add') { var cl = byKey[v]; if (cl) addToSeason([cl], y); }
-  else if (a === 'inviteAll') { var list = inviteList(y); if (list.length && confirm('Добавить ' + list.length + ' ' + plural(list.length, 'клиента', 'клиентов', 'клиентов') + ' в DV-' + y + ' со статусом «Новая»?')) addToSeason(list, y); }
+  else if (a === 'add') { var cl = byKey[v]; if (cl) addToSeason([cl], Number(el.getAttribute('data-y')) || y); }
+  else if (a === 'inviteAll') { var cy = S.data.current, list = inviteList(cy); if (list.length && confirm('Добавить ' + list.length + ' ' + plural(list.length, 'клиента', 'клиентов', 'клиентов') + ' в DV-' + cy + ' со статусом «Новая»?')) addToSeason(list, cy); }
   else if (a === 'status' && c) setStatus(c, y, v);
   else if (a === 'prev' && c) { var j = STATUSES.indexOf(sub(c, y).status); if (j > 0) setStatus(c, y, STATUSES[j - 1]); }
   else if (a === 'del' && c) { S.del = c.key; render(); }
