@@ -99,7 +99,7 @@ function api_(d) {
     if (!checkToken_(d.token)) return { ok: false, auth: false, error: 'Нужно войти' };
     if (d.action === 'logout') { PropertiesService.getScriptProperties().deleteProperty('sess_' + sha_(d.token)); return { ok: true }; }
     const fns = { adminData: adminData, adminSaveSub: adminSaveSub, adminAddToSeason: adminAddToSeason,
-      adminSetCurrentSeason: adminSetCurrentSeason, adminAddMember: adminAddMember, adminSetPhoto: adminSetPhoto };
+      adminSetCurrentSeason: adminSetCurrentSeason, adminAddMember: adminAddMember, adminSetPhoto: adminSetPhoto, adminDeleteClient: adminDeleteClient };
     const fn = fns[d.action];
     if (!fn) return { ok: false, error: 'Неизвестное действие' };
     API_AUTH_ = true;
@@ -263,6 +263,41 @@ function adminAddToSeason(list, season) {
     });
     if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);
     return rows.length;
+  } finally { lock.releaseLock(); }
+}
+
+/** Удалить клиента: его строки анкеты (лист ответов) и все его подачи (лист «Подачи»). */
+function adminDeleteClient(key, rows) {
+  assertOwner_();
+  key = String(key || '');
+  if (!key) throw new Error('Нет клиента');
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const sh = responsesSheet_();
+    const v = sh.getDataRange().getValues();
+    const c = colIndex_(v[0].map(String));
+    // Удаляем только строки, где имя и дата рождения действительно этого клиента (на случай, если таблицу правили руками).
+    const del = (rows || []).map(Number).filter(function (r, i, a) {
+      if (!(r >= 2 && r <= v.length) || a.indexOf(r) !== i) return false;
+      const row = v[r - 1];
+      return keyOf_(String(row[c.name] || '').trim(), fmtDate_(row[c.birth], 'dd.MM.yyyy')) === key;
+    }).sort(function (a, b) { return b - a; });
+    del.forEach(function (r) { sh.deleteRow(r); });
+
+    // «Подачи»: убрать строки клиента и сдвинуть номера строк анкеты у остальных.
+    const ss = subsSheet_();
+    const sv = ss.getDataRange().getValues();
+    for (let i = sv.length - 1; i >= 1; i--) if (String(sv[i][1]) === key) ss.deleteRow(i + 1);
+    const left = ss.getDataRange().getValues();
+    if (left.length > 1 && del.length) {
+      const col = left.slice(1).map(function (r) {
+        const n = Number(r[8]);
+        if (!n) return [r[8]];
+        return [n - del.filter(function (d) { return d < n; }).length];
+      });
+      ss.getRange(2, 9, col.length, 1).setValues(col);
+    }
+    return del.length;
   } finally { lock.releaseLock(); }
 }
 

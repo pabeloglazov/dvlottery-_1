@@ -90,6 +90,10 @@ h1{margin:2px 0 0;font-size:30px;font-weight:800;letter-spacing:-.02em;line-heig
 .head-main{flex:1;min-width:220px;display:flex;flex-direction:column;gap:6px}
 .head-actions{display:flex;gap:8px;flex-wrap:wrap}
 .steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.danger-box{display:flex;flex-direction:column;gap:10px;border:1px solid #f1c4c7;background:#fdf3f3}
+.btn.danger{background:#b3261e;border-color:#b3261e;color:#fff}
+.btn.ghost-danger{background:none;border-color:transparent;color:#b3261e}
+.btn.ghost-danger:hover{background:#fdf3f3}
 .step{width:100%;border:0;background:none;padding:0;display:flex;flex-direction:column;gap:8px;text-align:left}
 .step i{display:block;height:6px;border-radius:999px;background:var(--line)}
 .step.done i{background:var(--green)}
@@ -135,7 +139,7 @@ h1{margin:2px 0 0;font-size:30px;font-weight:800;letter-spacing:-.02em;line-heig
   .grid2,.grid3{grid-template-columns:minmax(0,1fr)}
   .steps{grid-template-columns:repeat(2,minmax(0,1fr))}
   .big-av{width:64px;height:64px;font-size:20px;border-radius:14px}
-  .head-actions .btn{flex:1}
+  .head-actions .btn{flex:1 1 auto}
 }
 @media (min-width:861px){.nav-top{display:flex;flex-direction:column;gap:16px}}
 </style></head>
@@ -291,6 +295,13 @@ function saveSub(c, y, patch, msg) {
   run('adminSaveSub', [c.key, c.name, c.row, y, { status: next.status, paid: next.paid, number: next.number, result: next.result, note: next.note }],
     function () { if (msg) toast(msg); }, function () { load(true); });
 }
+// Смена статуса; при откате ниже «Оплачено» снимаем оплату, ниже «Подано» — результат.
+function setStatus(c, y, st) {
+  var cur = sub(c, y), i = STATUSES.indexOf(st), patch = { status: st }, extra = '';
+  if (i < 2 && cur.paid) { patch.paid = ''; extra = ' · оплата снята'; }
+  if (i < 3 && cur.result) { patch.result = ''; extra += ' · результат сброшен'; }
+  saveSub(c, y, patch, 'Статус: ' + st + extra);
+}
 function addToSeason(list, y) {
   if (!list.length) return;
   list.forEach(function (c) { S.data.subs[c.key] = S.data.subs[c.key] || {}; S.data.subs[c.key][y] = { status: 'Новая', paid: '', number: '', result: '', note: '', date: '', virtual: false }; });
@@ -443,6 +454,7 @@ function renderCard(c, y) {
       '<label class="field">Номер подтверждения<input id="f-number" data-act="field" data-k="number" value="' + esc(s.number) + '" placeholder="' + y + 'XXXXXXXXXXXX"></label>' +
       '<label class="field">Заметка<input id="f-note" data-act="field" data-k="note" value="' + esc(s.note) + '" placeholder="договорённости, напоминания"></label></div>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+      (idx > 0 ? '<button class="btn" data-act="prev">← Вернуть: ' + STATUSES[idx - 1] + '</button>' : '') +
       (idx < 3 ? '<button class="btn dark" data-act="next">Дальше: ' + STATUSES[idx + 1] + ' →</button>' : '') +
       (idx === 3 ? '<span style="font-weight:600;color:var(--greenInk);margin-right:6px">Результат:</span><button class="btn sm' + (s.result === 'Выиграл' ? ' pri' : '') + '" data-act="result" data-v="Выиграл">Выиграл</button><button class="btn sm' + (s.result === 'Не выиграл' ? ' dark' : '') + '" data-act="result" data-v="Не выиграл">Не выиграл</button>' + (s.result ? '<button class="btn sm" data-act="result" data-v="">Сбросить</button>' : '') : '') +
       '</div></section>';
@@ -486,6 +498,11 @@ function renderCard(c, y) {
   h += '<section class="card pad"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px"><h2 class="sec-title" style="font-size:18px">Данные для подачи</h2><span class="muted">клик — скопировать</span></div><div class="grid2" style="column-gap:24px;row-gap:0">' +
     fields.filter(function (f) { return f[1]; }).map(function (f) { var on = S.copied === f[0]; return '<button class="copy' + (on ? ' ok' : '') + '" data-act="copy" data-k="' + esc(f[0]) + '" data-v="' + esc(f[1]) + '"><span style="min-width:0"><span class="k" style="display:block">' + esc(f[0]) + '</span><span class="v">' + esc(f[1]) + '</span></span><span class="c">' + (on ? 'Скопировано' : 'Копировать') + '</span></button>'; }).join('') +
     '</div></section>';
+  var nRows = (c.rows || [c.row]).length;
+  h += S.del === c.key
+    ? '<section class="card pad danger-box"><b>Удалить ' + esc(c.name) + '?</b><span class="muted">Из таблицы удалятся ' + (nRows > 1 ? 'все его анкеты (' + nRows + ' ' + plural(nRows, 'строка', 'строки', 'строк') + ')' : 'его анкета') + ' и все отметки по сезонам. Отменить нельзя. Фото в папке на Drive останутся.</span>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn danger" data-act="delYes"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Удаляю…' : 'Удалить навсегда') + '</button><button class="btn" data-act="delNo">Отмена</button></div></section>'
+    : '<div style="text-align:right"><button class="btn sm ghost-danger" data-act="del">Удалить заявку</button></div>';
   return h;
 }
 
@@ -505,11 +522,20 @@ document.addEventListener('click', function (e) {
     run('adminSetCurrentSeason', [Number(v)], function (n) { S.data.current = n; S.season = n; S.view = 'all'; render(); toast('Текущий сезон: DV-' + n); });
   }
   else if (a === 'view') { S.view = v; S.sel = null; S.fam = null; render(); window.scrollTo(0, 0); }
-  else if (a === 'open') { S.sel = v; S.fam = null; render(); window.scrollTo(0, 0); }
+  else if (a === 'open') { S.sel = v; S.fam = null; S.del = null; render(); window.scrollTo(0, 0); }
   else if (a === 'close') { S.sel = null; S.fam = null; render(); }
   else if (a === 'add') { var cl = byKey[v]; if (cl) addToSeason([cl], y); }
   else if (a === 'inviteAll') { var list = inviteList(y); if (list.length && confirm('Добавить ' + list.length + ' ' + plural(list.length, 'клиента', 'клиентов', 'клиентов') + ' в DV-' + y + ' со статусом «Новая»?')) addToSeason(list, y); }
-  else if (a === 'status' && c) saveSub(c, y, { status: v }, 'Статус: ' + v);
+  else if (a === 'status' && c) setStatus(c, y, v);
+  else if (a === 'prev' && c) { var j = STATUSES.indexOf(sub(c, y).status); if (j > 0) setStatus(c, y, STATUSES[j - 1]); }
+  else if (a === 'del' && c) { S.del = c.key; render(); }
+  else if (a === 'delNo') { S.del = null; render(); }
+  else if (a === 'delYes' && c && !S.busy) {
+    S.busy = true; render();
+    run('adminDeleteClient', [c.key, c.rows || [c.row]], function (n) {
+      S.busy = false; S.del = null; S.sel = null; toast(c.name + ' удалён(а) из таблицы'); load();
+    }, function () { S.busy = false; render(); });
+  }
   else if (a === 'next' && c) { var i = STATUSES.indexOf(sub(c, y).status); if (i < 3) saveSub(c, y, { status: STATUSES[i + 1] }, 'Статус: ' + STATUSES[i + 1]); }
   else if (a === 'result' && c) saveSub(c, y, { result: v }, v ? 'Отмечено: ' + v : 'Результат сброшен');
   else if (a === 'copy') copyText(v, el.getAttribute('data-k'));
