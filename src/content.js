@@ -49,6 +49,17 @@ export const T = {
         { when: "до 3 декабря 2026", what: "объявление результатов" },
       ],
     },
+    benefits: {
+      title: "Что даёт грин\u2011карта",
+      lead: "Пять причин подать заявку в этом году",
+      items: [
+        { t: "Жить и работать в США", d: "Право постоянно жить и работать в США: любая работа, свой бизнес, учёба." },
+        { t: "Вся семья вместе", d: "Супруг и дети до 21 года получают грин-карты вместе с вами по одной выигравшей заявке." },
+        { t: "Образование и медицина", d: "Американские университеты, школы и медицина — на правах резидента." },
+        { t: "Свобода передвижения", d: "Путешествуйте по миру и возвращайтесь домой в США без виз и продлений статуса." },
+        { t: "Путь к гражданству", d: "Через 5 лет с грин-картой можно подать на гражданство США. А это, пожалуй, самое главное." },
+      ],
+    },
     how: {
       title: "Как это работает",
       steps: [
@@ -190,6 +201,17 @@ export const T = {
         { when: "by Nov 1, 2026", what: "registration opens" },
         { when: "at least 30 days", what: "registration stays open" },
         { when: "by Dec 3, 2026", what: "results announced" },
+      ],
+    },
+    benefits: {
+      title: "What a green card gives you",
+      lead: "Five reasons to enter this year",
+      items: [
+        { t: "Live and work in the US", d: "The right to live and work in the US permanently: any job, your own business, studies." },
+        { t: "The whole family together", d: "Your spouse and children under 21 get green cards with you on one winning entry." },
+        { t: "Education and healthcare", d: "US universities, schools and healthcare as a permanent resident." },
+        { t: "Freedom to travel", d: "Travel the world and come back home to the US without visas or status renewals." },
+        { t: "Path to citizenship", d: "After 5 years as a green card holder you can apply for US citizenship." },
       ],
     },
     how: {

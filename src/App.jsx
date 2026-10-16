@@ -137,6 +137,27 @@ export default function App() {
           </div>
         </section>
 
+        <section id="benefits" className="section benefits" aria-labelledby="benefits-title">
+          <div className="wrap">
+            <div className="benefits-head">
+              <div>
+                <h2 id="benefits-title">{t.benefits.title}</h2>
+                <p className="benefits-lead">{t.benefits.lead}</p>
+              </div>
+              <Flag className="benefits-flag" />
+            </div>
+            <ol className="benefits-grid">
+              {t.benefits.items.map((x, i) => (
+                <li key={x.t} className={i === 4 ? "is-main" : undefined}>
+                  <span className="b-num" aria-hidden="true">0{i + 1}</span>
+                  <h3>{x.t}</h3>
+                  <p>{x.d}</p>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </section>
+
         <section id="how" className="section">
           <div className="wrap">
             <h2>{t.how.title}</h2>

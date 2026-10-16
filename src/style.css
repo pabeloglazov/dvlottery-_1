@@ -113,6 +113,19 @@ img { max-width: 100%; display: block; }
 .steps h3 { margin-top: 18px; font-size: 19px; }
 .steps p { margin-top: 8px; color: var(--ink-2); font-size: 15.5px; }
 
+/* Что даёт грин-карта */
+.benefits-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; }
+.benefits-lead { margin-top: 8px; color: var(--ink-2); font-size: 18px; }
+.benefits-flag { width: 120px; height: auto; aspect-ratio: 19 / 10; border-radius: 8px; transform: rotate(6deg); box-shadow: 0 16px 30px -16px rgba(20, 33, 64, .45); flex: none; }
+.benefits-grid { list-style: none; margin: 32px 0 0; padding: 0; display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; }
+.benefits-grid li { grid-column: span 2; position: relative; overflow: hidden; padding: 26px 24px 24px; border-radius: var(--r-md); background: var(--surface); border: 1px solid var(--line); min-height: 0; }
+.benefits-grid li:nth-child(n+4) { grid-column: span 3; }
+.benefits-grid h3 { position: relative; font-size: 20px; max-width: 16ch; padding-right: 56px; }
+.benefits-grid p { position: relative; margin-top: 10px; color: var(--ink-2); font-size: 15.5px; max-width: 42ch; }
+.b-num { position: absolute; right: 20px; top: 16px; font-size: 44px; font-weight: 800; letter-spacing: -.04em; color: var(--green-tint); line-height: 1; }
+.benefits-grid li.is-main { background: var(--green); border-color: var(--green); color: #fff; }
+.benefits-grid li.is-main p { color: rgba(255, 255, 255, .85); }
+.benefits-grid li.is-main .b-num { color: rgba(255, 255, 255, .14); }
 .why-grid { list-style: none; margin: 32px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
 .why-grid li { position: relative; padding: 24px 22px 22px; border-radius: var(--r-md); background: var(--paper); border: 1px solid var(--line); }
 .why-grid li::before { content: ""; position: absolute; left: 22px; right: 22px; top: -1px; height: 3px; border-radius: 0 0 3px 3px; background: var(--green); }
@@ -266,6 +279,9 @@ img { max-width: 100%; display: block; }
   .topnav { display: none; }
   .lang { margin-left: auto; }
   .hero { padding: 40px 0 44px; }
+  .benefits-grid { grid-template-columns: 1fr; }
+  .benefits-grid li, .benefits-grid li:nth-child(n+4) { grid-column: auto; min-height: 0; }
+  .benefits-flag { width: 84px; }
   .hero-art { padding: 26px 0 0 18px; }
   .hero-flag { width: 66%; }
   .hero-grid, .form-wrap { grid-template-columns: 1fr; gap: 40px; }
