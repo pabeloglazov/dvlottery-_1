@@ -13,6 +13,7 @@ const SUBS_SHEET = 'Подачи';
 const SUBS_HEADERS = ['Клиент', 'Ключ', 'Сезон', 'Статус', 'Оплата', 'Номер подтверждения', 'Результат', 'Заметка', 'Строка анкеты', 'Обновлено'];
 const STATUSES = ['Новая', 'Связался', 'Оплачено', 'Подано'];
 const DEFAULT_SEASON = 2027;
+const REMOVED_ = 'Убран';
 
 const COLS = {
   ts: ['timestamp', 'отметка времени'], name: ['напиши фамилию и имя'], sex: ['выберите свой пол'],
@@ -100,7 +101,7 @@ function api_(d) {
     if (d.action === 'logout') { PropertiesService.getScriptProperties().deleteProperty('sess_' + sha_(d.token)); return { ok: true }; }
     const fns = { adminData: adminData, adminSaveSub: adminSaveSub, adminAddToSeason: adminAddToSeason,
       adminSetCurrentSeason: adminSetCurrentSeason, adminAddMember: adminAddMember, adminSetPhoto: adminSetPhoto, adminDeleteClient: adminDeleteClient,
-      adminUpdateField: adminUpdateField, adminUpdateMember: adminUpdateMember, adminRemoveMember: adminRemoveMember };
+      adminUpdateField: adminUpdateField, adminUpdateMember: adminUpdateMember, adminRemoveMember: adminRemoveMember, adminRemoveFromSeason: adminRemoveFromSeason };
     const fn = fns[d.action];
     if (!fn) return { ok: false, error: 'Неизвестное действие' };
     API_AUTH_ = true;
@@ -214,6 +215,7 @@ function adminData() {
     const key = sv[i][1], season = Number(sv[i][2]);
     if (!key || !season) continue;
     subs[key] = subs[key] || {};
+    if (sv[i][3] === REMOVED_) { delete subs[key][season]; continue; }
     const prev = subs[key][season] || {};
     subs[key][season] = {
       status: sv[i][3] || 'Новая', paid: sv[i][4], number: sv[i][5], result: sv[i][6], note: sv[i][7],
@@ -259,10 +261,16 @@ function adminAddToSeason(list, season) {
     const sh = subsSheet_();
     const rows = [];
     (list || []).forEach(function (c) {
-      if (findSubRow_(sh, c.key, season)) return;
+      const at = findSubRow_(sh, c.key, season);
+      if (at && sh.getRange(at, 4).getValue() === REMOVED_) {
+        sh.getRange(at, 4, 1, 7).setValues([['Новая', '', '', '', '', Number(c.row) || '', new Date()]]);
+        rows.push(null); return;
+      }
+      if (at) return;
       rows.push([String(c.name), String(c.key), Number(season), 'Новая', '', '', '', '', Number(c.row) || '', new Date()]);
     });
-    if (rows.length) sh.getRange(sh.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);
+    const fresh = rows.filter(Boolean);
+    if (fresh.length) sh.getRange(sh.getLastRow() + 1, 1, fresh.length, fresh[0].length).setValues(fresh);
     return rows.length;
   } finally { lock.releaseLock(); }
 }
@@ -394,6 +402,21 @@ function adminRemoveMember(row, kind, idx) {
     if (!(idx >= 0 && idx < f.lines.length)) throw new Error('Не найдено — обновите страницу');
     f.lines.splice(idx, 1);
     return { text: writeFamily_(f, kind, row), marital: '' };
+  } finally { lock.releaseLock(); }
+}
+
+/** Убрать клиента из сезона: анкета и данные остаются, в «Подачах» ставится отметка «Убран». */
+function adminRemoveFromSeason(key, name, row, season) {
+  assertOwner_();
+  season = Number(season);
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const sh = subsSheet_();
+    const at = findSubRow_(sh, key, season);
+    const values = [String(name), String(key), season, REMOVED_, '', '', '', '', Number(row) || '', new Date()];
+    if (at) sh.getRange(at, 4, 1, 1).setValue(REMOVED_), sh.getRange(at, 10).setValue(new Date());
+    else sh.appendRow(values);
+    return true;
   } finally { lock.releaseLock(); }
 }
 
