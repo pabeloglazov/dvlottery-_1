@@ -109,6 +109,17 @@ h1{margin:2px 0 0;font-size:30px;font-weight:800;letter-spacing:-.02em;line-heig
 .hist{display:grid;grid-template-columns:80px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--line2)}
 .fam{display:flex;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--line2)}
 .fam .t{flex:1;min-width:0;display:flex;flex-direction:column}
+.frow{display:flex;align-items:center;gap:4px;border-top:1px solid var(--line2)}.frow .copy{border-top:0;flex:1;min-width:0}
+.pen{width:30px;height:30px;flex:none;display:grid;place-items:center;border-radius:8px;border:1px solid transparent;background:none;color:var(--ink3);cursor:pointer}
+.pen:hover{border-color:var(--line);color:var(--green);background:#fff}.pen svg{width:15px;height:15px}
+.pen.del:hover{color:#b3261e}
+.fedit{display:flex;flex-direction:column;gap:8px;padding:10px 0 12px;border-top:1px solid var(--line2)}
+.fedit .k{font-size:12.5px;color:var(--green);font-weight:600}
+.fedit input,.fedit select,.fedit textarea{padding:9px 11px;border:1px solid var(--green);border-radius:9px;font:inherit;font-size:14.5px;color:var(--ink);background:#fff;width:100%;box-shadow:0 0 0 3px rgba(46,106,78,.15);outline:none}
+.fedit .row-btns{display:flex;gap:8px}
+.empty-v{color:var(--ink3);font-weight:400;font-style:italic}
+.fam .acts{display:flex;gap:2px}
+.fam-del{display:flex;gap:8px;align-items:center;padding:8px 10px;margin:4px 0;border-radius:10px;background:#fdf3f3;border:1px solid #f1c4c7;font-size:13.5px}
 .copy{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;padding:10px 0;border:0;border-top:1px solid var(--line2);background:none;text-align:left}
 .copy .k{font-size:12.5px;color:var(--ink3)}.copy .v{font-size:14.5px;font-weight:500;word-break:break-word}
 .copy .c{font-size:12px;border:1px solid var(--line);border-radius:7px;padding:3px 8px;color:var(--ink3);white-space:nowrap}
@@ -158,7 +169,10 @@ var STATUS_NAV = { 'Новая': 'Новые', 'Связался': 'Связал
 var DOT = { 'Новая': '#e0a83a', 'Связался': '#7f9fd9', 'Оплачено': '#5fa77f', 'Подано': '#b8c1d6' };
 var PILL = { 'Новая': 'p-new', 'Связался': 'p-contact', 'Оплачено': 'p-paid', 'Подано': 'p-done', 'Выиграл': 'p-win', 'Не выиграл': 'p-lose' };
 var AVC = ['#dfe8f5', '#e2eee6', '#f6e7d4', '#ece0fa', '#f1f3f7'];
-var S = { data: null, season: null, view: 'all', q: '', sel: null, menu: false, fam: null, copied: '', busy: false };
+var S = { data: null, season: null, view: 'all', q: '', sel: null, menu: false, fam: null, copied: '', busy: false, edit: null, memDel: null };
+var PEN = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 2.5l2.5 2.5L5.5 13H3v-2.5z"/><path d="M9.5 4l2.5 2.5"/></svg>';
+var XIC = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
+var FIELDS = [['name','Фамилия и имя'],['sex','Пол','sel',['М','Ж']],['dob','Дата рождения'],['birthCity','Город рождения'],['birthCountry','Страна рождения'],['country','Страна проживания'],['address','Адрес','area'],['email','Email'],['telegram','Telegram'],['education','Образование'],['marital','Семейное положение','sel',['Не женат / не замужен','Женат / замужем','Разведен / разведена','Вдовец / вдова']]];
 var byKey = {};
 
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -265,8 +279,8 @@ function parsePeople(text) {
 }
 function family(c) {
   var out = [];
-  parsePeople(c.spouseData).forEach(function (p) { p.rel = p.sex === 'М' ? 'супруг' : p.sex === 'Ж' ? 'супруга' : 'супруг(а)'; out.push(p); });
-  parsePeople(c.kidsData).forEach(function (p) { p.rel = p.sex === 'М' ? 'сын' : p.sex === 'Ж' ? 'дочь' : 'ребёнок'; out.push(p); });
+  parsePeople(c.spouseData).forEach(function (p, i) { p.kind = 'spouse'; p.idx = i; p.rel = p.sex === 'М' ? 'супруг' : p.sex === 'Ж' ? 'супруга' : 'супруг(а)'; out.push(p); });
+  parsePeople(c.kidsData).forEach(function (p, i) { p.kind = 'child'; p.idx = i; p.rel = p.sex === 'М' ? 'сын' : p.sex === 'Ж' ? 'дочь' : 'ребёнок'; out.push(p); });
   return out;
 }
 function oldKidsNote(c) {
@@ -307,6 +321,22 @@ function setStatus(c, y, st) {
   if (i < 2 && cur.paid) { patch.paid = ''; extra = ' · оплата снята'; }
   if (i < 3 && cur.result) { patch.result = ''; extra += ' · результат сброшен'; }
   saveSub(c, y, patch, 'Статус: ' + st + extra);
+}
+function saveEdit(c) {
+  var el = document.getElementById('ed-in'), k = S.edit.k, v = (el ? el.value : S.edit.v).trim();
+  if (k === 'name') { v = v.toUpperCase().replace(/\s+/g, ' '); if (!/^[A-Z][A-Z .'\-]*$/.test(v)) { toast('Имя латиницей, как в паспорте'); return; } }
+  if (k === 'dob' && !/^\d{2}\.\d{2}\.\d{4}$/.test(v)) { toast('Дата в формате ДД.ММ.ГГГГ'); return; }
+  if (k === 'email' && v && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) { toast('Проверьте email'); return; }
+  if (/^(birthCity|birthCountry|country)$/.test(k)) v = v.toUpperCase();
+  if (v === (c[k] || '')) { S.edit = null; render(); return; }
+  S.busy = true; render();
+  run('adminUpdateField', [c.key, c.rows || [c.row], k, v], function (r) {
+    S.busy = false; S.edit = null;
+    if (r && r.key && r.key !== c.key) {
+      var old = c.key; S.data.subs[r.key] = S.data.subs[old]; delete S.data.subs[old]; delete byKey[old]; c.key = r.key; byKey[r.key] = c; S.sel = r.key;
+    }
+    c[k] = v; render(); toast('Сохранено');
+  }, function () { S.busy = false; render(); });
 }
 function addToSeason(list, y) {
   if (!list.length) return;
@@ -485,7 +515,9 @@ function renderCard(c, y) {
   fam.forEach(function (m) {
     var mt = thumb(m.photo, 120);
     h += '<div class="fam"><span class="av" style="background:' + avColor(m.name) + '">' + esc(initials(m.name)) + (mt ? '<img src="' + mt + '" alt="" referrerpolicy="no-referrer" onerror="this.remove()">' : '') + '</span><span class="t"><b style="font-weight:600">' + esc(m.name) + '</b><span class="muted">' + esc([m.rel, m.dob, m.place].filter(Boolean).join(' · ')) + '</span></span>' +
-      (m.photo ? '<a class="pill p-paid" href="' + esc(m.photo) + '" target="_blank" rel="noopener" style="text-decoration:none">фото</a>' : '<span class="pill" style="background:#fbe3e4;color:#9b2730">нет фото</span>') + '</div>';
+      (m.photo ? '<a class="pill p-paid" href="' + esc(m.photo) + '" target="_blank" rel="noopener" style="text-decoration:none">фото</a>' : '<span class="pill" style="background:#fbe3e4;color:#9b2730">нет фото</span>') +
+      '<span class="acts"><button class="pen" data-act="memEdit" data-kind="' + m.kind + '" data-i="' + m.idx + '" title="Изменить" aria-label="Изменить">' + PEN + '</button><button class="pen del" data-act="memDel" data-kind="' + m.kind + '" data-i="' + m.idx + '" title="Убрать из заявки" aria-label="Убрать из заявки">' + XIC + '</button></span></div>';
+    if (S.memDel === m.kind + m.idx) h += '<div class="fam-del"><span style="flex:1">Убрать <b>' + esc(m.name) + '</b> из заявки?</span><button class="btn sm danger" data-act="memDelYes" data-kind="' + m.kind + '" data-i="' + m.idx + '"' + (S.busy ? ' disabled' : '') + '>Убрать</button><button class="btn sm" data-act="memDelNo">Отмена</button></div>';
   });
   var kidsOld = oldKidsNote(c);
   if (kidsOld) h += '<div class="fam"><span class="t"><b style="font-weight:600">Дети (из старой анкеты)</b><span class="muted">' + esc(kidsOld) + '</span></span></div>';
@@ -495,21 +527,32 @@ function renderCard(c, y) {
     h += '<div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:12px;border-top:1px solid var(--line2)">' + (hasSpouse ? '' : '<button class="btn sm dash" data-act="fam" data-v="spouse">+ Супруг(а)</button>') + '<button class="btn sm dash" data-act="fam" data-v="child">+ Ребёнок</button></div>';
   } else {
     var d = S.fam;
-    h += '<div class="form-box"><b>' + (d.kind === 'spouse' ? 'Добавить супруга(у)' : 'Добавить ребёнка') + '</b>' +
+    h += '<div class="form-box"><b>' + (d.idx != null ? 'Изменить: ' + esc(d.orig) : d.kind === 'spouse' ? 'Добавить супруга(у)' : 'Добавить ребёнка') + '</b>' +
       '<label class="field">Фамилия и имя (латиницей)<input id="m-name" data-act="draft" data-k="name" value="' + esc(d.name) + '" placeholder="IVANOVA ANNA"></label>' +
       '<div class="grid2" style="gap:10px"><label class="field">Пол<select id="m-sex" data-act="draft" data-k="sex"><option value="">—</option><option' + (d.sex === 'М' ? ' selected' : '') + '>М</option><option' + (d.sex === 'Ж' ? ' selected' : '') + '>Ж</option></select></label>' +
       '<label class="field">Дата рождения<input id="m-dob" data-act="draft" data-k="dob" value="' + esc(d.dob) + '" placeholder="ДД.ММ.ГГГГ" inputmode="numeric"></label>' +
       '<label class="field">Город рождения<input id="m-city" data-act="draft" data-k="city" value="' + esc(d.city) + '" placeholder="MOSCOW"></label>' +
       '<label class="field">Страна рождения<input id="m-country" data-act="draft" data-k="country" value="' + esc(d.country) + '" placeholder="RUSSIA"></label></div>' +
-      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><label class="btn sm file">' + (d.photo ? 'Фото выбрано ✓' : 'Фото (необязательно)') + '<input type="file" accept="image/*" data-act="memberPhoto"></label></div>' +
-      '<div style="display:flex;gap:8px"><button class="btn pri" data-act="saveMember"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Сохраняю…' : 'Добавить в заявку') + '</button><button class="btn" data-act="cancelMember">Отмена</button></div></div>';
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><label class="btn sm file">' + (d.photo ? 'Фото выбрано ✓' : d.keepPhoto ? 'Заменить фото' : 'Фото (необязательно)') + '<input type="file" accept="image/*" data-act="memberPhoto"></label></div>' +
+      '<div style="display:flex;gap:8px"><button class="btn pri" data-act="saveMember"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Сохраняю…' : d.idx != null ? 'Сохранить' : 'Добавить в заявку') + '</button><button class="btn" data-act="cancelMember">Отмена</button></div></div>';
   }
   h += '</section></div>';
 
-  var fields = [['Фамилия и имя', c.name], ['Пол', c.sex], ['Дата рождения', c.dob], ['Город рождения', c.birthCity], ['Страна рождения', c.birthCountry],
-    ['Страна проживания', c.country], ['Адрес', c.address], ['Email', c.email], ['Telegram', c.telegram], ['Образование', c.education], ['Семейное положение', c.marital]];
-  h += '<section class="card pad"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px"><h2 class="sec-title" style="font-size:18px">Данные для подачи</h2><span class="muted">клик — скопировать</span></div><div class="grid2" style="column-gap:24px;row-gap:0">' +
-    fields.filter(function (f) { return f[1]; }).map(function (f) { var on = S.copied === f[0]; return '<button class="copy' + (on ? ' ok' : '') + '" data-act="copy" data-k="' + esc(f[0]) + '" data-v="' + esc(f[1]) + '"><span style="min-width:0"><span class="k" style="display:block">' + esc(f[0]) + '</span><span class="v">' + esc(f[1]) + '</span></span><span class="c">' + (on ? 'Скопировано' : 'Копировать') + '</span></button>'; }).join('') +
+  h += '<section class="card pad"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px"><h2 class="sec-title" style="font-size:18px">Данные для подачи</h2><span class="muted">клик — скопировать · ✎ — изменить</span></div><div class="grid2" style="column-gap:24px;row-gap:0">' +
+    FIELDS.map(function (f) {
+      var k = f[0], label = f[1], val = c[k] || '';
+      if (S.edit && S.edit.k === k) {
+        var inp = f[2] === 'sel' ? '<select id="ed-in">' + f[3].map(function (o) { return '<option' + (o === S.edit.v ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('') + (f[3].indexOf(S.edit.v) === -1 && S.edit.v ? '<option selected>' + esc(S.edit.v) + '</option>' : '') + '</select>'
+          : f[2] === 'area' ? '<textarea id="ed-in" rows="2">' + esc(S.edit.v) + '</textarea>'
+          : '<input id="ed-in" value="' + esc(S.edit.v) + '"' + (k === 'dob' ? ' placeholder="ДД.ММ.ГГГГ" inputmode="numeric"' : '') + '>';
+        return '<div class="fedit"><span class="k">' + esc(label) + '</span>' + inp + '<div class="row-btns"><button class="btn sm pri" data-act="edSave"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Сохраняю…' : 'Сохранить') + '</button><button class="btn sm" data-act="edCancel">Отмена</button></div></div>';
+      }
+      var on = S.copied === label;
+      return '<div class="frow">' + (val
+        ? '<button class="copy' + (on ? ' ok' : '') + '" data-act="copy" data-k="' + esc(label) + '" data-v="' + esc(val) + '"><span style="min-width:0"><span class="k" style="display:block">' + esc(label) + '</span><span class="v">' + esc(val) + '</span></span><span class="c">' + (on ? 'Скопировано' : 'Копировать') + '</span></button>'
+        : '<div class="copy" style="cursor:default"><span style="min-width:0"><span class="k" style="display:block">' + esc(label) + '</span><span class="v empty-v">не указано</span></span></div>') +
+        '<button class="pen" data-act="edit" data-k="' + k + '" title="Изменить" aria-label="Изменить: ' + esc(label) + '">' + PEN + '</button></div>';
+    }).join('') +
     '</div></section>';
   var nRows = (c.rows || [c.row]).length;
   h += S.del === c.key
@@ -535,7 +578,7 @@ document.addEventListener('click', function (e) {
     run('adminSetCurrentSeason', [Number(v)], function (n) { S.data.current = n; S.season = n; S.view = 'all'; render(); toast('Текущий сезон: DV-' + n); });
   }
   else if (a === 'view') { S.view = v; S.sel = null; S.fam = null; render(); window.scrollTo(0, 0); }
-  else if (a === 'open') { S.sel = v; S.fam = null; S.del = null; render(); window.scrollTo(0, 0); }
+  else if (a === 'open') { S.sel = v; S.fam = null; S.del = null; S.edit = null; S.memDel = null; render(); window.scrollTo(0, 0); }
   else if (a === 'close') { S.sel = null; S.fam = null; render(); }
   else if (a === 'add') { var cl = byKey[v]; if (cl) addToSeason([cl], Number(el.getAttribute('data-y')) || y); }
   else if (a === 'inviteAll') { var cy = S.data.current, list = inviteList(cy); if (list.length && confirm('Добавить ' + list.length + ' ' + plural(list.length, 'клиента', 'клиентов', 'клиентов') + ' в DV-' + cy + ' со статусом «Новая»?')) addToSeason(list, cy); }
@@ -560,6 +603,36 @@ document.addEventListener('click', function (e) {
   }
   else if (a === 'fam') { S.fam = { kind: v, name: '', sex: '', dob: '', city: '', country: '', photo: null }; render(); }
   else if (a === 'cancelMember') { S.fam = null; render(); }
+  else if (a === 'edit' && c) { S.edit = { k: el.getAttribute('data-k'), v: c[el.getAttribute('data-k')] || '' }; render(); var ei = document.getElementById('ed-in'); if (ei) { ei.focus(); if (ei.setSelectionRange && ei.value) ei.setSelectionRange(ei.value.length, ei.value.length); } }
+  else if (a === 'edCancel') { S.edit = null; render(); }
+  else if (a === 'edSave' && c && S.edit && !S.busy) saveEdit(c);
+  else if (a === 'memEdit' && c) {
+    var mm = family(c).filter(function (x) { return x.kind === el.getAttribute('data-kind') && x.idx === Number(el.getAttribute('data-i')); })[0]; if (!mm) return;
+    var pl = mm.place.split(',').map(function (x) { return x.trim(); });
+    S.fam = { kind: mm.kind, idx: mm.idx, orig: mm.name, name: mm.name, sex: mm.sex, dob: mm.dob, city: pl[0] || '', country: pl.slice(1).join(', '), photo: null, keepPhoto: mm.photo };
+    S.memDel = null; render();
+  }
+  else if (a === 'memDel') { S.memDel = el.getAttribute('data-kind') + el.getAttribute('data-i'); S.fam = null; render(); }
+  else if (a === 'memDelNo') { S.memDel = null; render(); }
+  else if (a === 'memDelYes' && c && !S.busy) {
+    var kind = el.getAttribute('data-kind'), idx = Number(el.getAttribute('data-i'));
+    S.busy = true; render();
+    run('adminRemoveMember', [c.row, kind, idx], function (r) {
+      S.busy = false; S.memDel = null;
+      if (kind === 'spouse') c.spouseData = r.text; else c.kidsData = r.text;
+      if (r.marital) c.marital = r.marital;
+      render(); toast('Убрано из заявки');
+    }, function () { S.busy = false; render(); });
+  }
+  else if (a === 'saveMember' && c && S.fam && S.fam.idx != null && !S.busy) {
+    var dm = S.fam;
+    if (!/^[A-Za-z][A-Za-z .'\-]*$/.test(dm.name.trim())) { toast('Имя латиницей, как в паспорте'); return; }
+    if (dm.dob && !/^\d{2}\.\d{2}\.\d{4}$/.test(dm.dob.trim())) { toast('Дата в формате ДД.ММ.ГГГГ'); return; }
+    S.busy = true; render();
+    run('adminUpdateMember', [c.row, dm.kind, dm.idx, { name: dm.name, sex: dm.sex, dob: dm.dob.trim(), city: dm.city, country: dm.country, photo: dm.photo ? { mime: 'image/jpeg', data: dm.photo.split(',')[1] } : null }],
+      function (text) { S.busy = false; if (dm.kind === 'spouse') c.spouseData = text; else c.kidsData = text; S.fam = null; render(); toast('Сохранено'); },
+      function () { S.busy = false; render(); });
+  }
   else if (a === 'saveMember' && c && S.fam && !S.busy) {
     var d = S.fam;
     if (!/^[A-Za-z][A-Za-z .'\-]*$/.test(d.name.trim())) { toast('Имя латиницей, как в паспорте'); return; }
@@ -577,6 +650,7 @@ document.addEventListener('click', function (e) {
 document.addEventListener('input', function (e) {
   var el = e.target;
   if (el.id === 'q') { S.q = el.value; render(); }
+  else if (el.id === 'ed-in' && S.edit) S.edit.v = el.value;
   else if (el.getAttribute('data-act') === 'draft' && S.fam) {
     var k = el.getAttribute('data-k'), v = el.value;
     if (k === 'name' || k === 'city' || k === 'country') { v = v.toUpperCase(); el.value = v; }
@@ -593,7 +667,13 @@ document.addEventListener('change', function (e) {
     run('adminSetPhoto', [c.row, { mime: 'image/jpeg', data: u.split(',')[1] }], function (url) { c.photo = url; render(); toast('Фото сохранено'); });
   });
 });
-document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && S.menu) { S.menu = false; render(); } });
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && S.menu) { S.menu = false; render(); }
+  if (S.edit && e.target && e.target.id === 'ed-in') {
+    if (e.key === 'Escape') { S.edit = null; render(); }
+    else if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); var c = S.sel && byKey[S.sel]; if (c && !S.busy) saveEdit(c); }
+  }
+});
 if (API && !getToken()) renderLogin(); else load();
 </script>
 </body></html>
