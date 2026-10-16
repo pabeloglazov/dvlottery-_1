@@ -18,6 +18,39 @@ const WHY_ICONS = {
   chat: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 12.5a7.5 7.5 0 01-10.9 6.7L4 20.5l1.4-4.6A7.5 7.5 0 1120 12.5z" /><path d="M9 12h.01M12.5 12h.01M16 12h.01" /></svg>,
 };
 
+// Флаг США: 13 полос, 50 звёзд, пропорции 19:10 (viewBox 190×100).
+const FLAG_STARS = (() => {
+  const out = [];
+  for (let r = 0; r < 9; r++) {
+    const odd = r % 2 === 1;
+    for (let c = 0; c < (odd ? 5 : 6); c++) out.push([6.33 * (2 * c + (odd ? 2 : 1)), 5.385 * (r + 1)]);
+  }
+  return out;
+})();
+const STAR = "M0,-2.46L0.58,-0.8L2.34,-0.76L0.94,0.3L1.45,1.99L0,0.98L-1.45,1.99L-0.94,0.3L-2.34,-0.76L-0.58,-0.8Z";
+
+function Flag({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 190 100" aria-hidden="true" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="flag-wave" x1="0" x2="1" y1="0" y2="0.35">
+          <stop offset="0" stopColor="#fff" stopOpacity=".18" />
+          <stop offset=".18" stopColor="#000" stopOpacity=".10" />
+          <stop offset=".38" stopColor="#fff" stopOpacity=".16" />
+          <stop offset=".6" stopColor="#000" stopOpacity=".12" />
+          <stop offset=".82" stopColor="#fff" stopOpacity=".14" />
+          <stop offset="1" stopColor="#000" stopOpacity=".10" />
+        </linearGradient>
+      </defs>
+      <rect width="190" height="100" fill="#fff" />
+      {Array.from({ length: 7 }, (_, i) => <rect key={i} y={i * 200 / 13} width="190" height={100 / 13} fill="#b22234" />)}
+      <rect width="76" height={700 / 13} fill="#3c3b6e" />
+      {FLAG_STARS.map(([x, y], i) => <path key={i} d={STAR} transform={`translate(${x} ${y})`} fill="#fff" />)}
+      <rect width="190" height="100" fill="url(#flag-wave)" />
+    </svg>
+  );
+}
+
 function Ticket({ t }) {
   return (
     <figure className="ticket" aria-label={t.head}>
@@ -85,7 +118,10 @@ export default function App() {
                 <a className="btn btn-ghost btn-lg" href={tg} target="_blank" rel="noopener">{t.hero.secondary}</a>
               </div>
             </div>
-            <Ticket t={t.ticket} />
+            <div className="hero-art">
+              <Flag className="hero-flag" />
+              <Ticket t={t.ticket} />
+            </div>
           </div>
         </section>
 

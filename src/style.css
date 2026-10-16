@@ -66,6 +66,11 @@ img { max-width: 100%; display: block; }
 .hero-price { margin-top: 20px; font-size: 15px; color: var(--ink-3); max-width: 52ch; }
 .hero-price b { color: var(--ink); font-weight: 700; }
 
+/* Флаг за квитанцией */
+.hero-art { position: relative; padding: 34px 0 0 28px; }
+.hero-flag { position: absolute; left: -6px; top: -8px; width: 74%; height: auto; aspect-ratio: 19 / 10; border-radius: 12px;
+  transform: rotate(-7deg); box-shadow: 0 24px 50px -22px rgba(20, 33, 64, .45); opacity: .96; }
+.hero-art .ticket { z-index: 1; }
 /* Квитанция-подтверждение */
 .ticket { position: relative; margin: 0; padding: 26px 26px 22px; border-radius: var(--r-lg); color: var(--green-ink);
   background:
@@ -261,6 +266,8 @@ img { max-width: 100%; display: block; }
   .topnav { display: none; }
   .lang { margin-left: auto; }
   .hero { padding: 40px 0 44px; }
+  .hero-art { padding: 26px 0 0 18px; }
+  .hero-flag { width: 66%; }
   .hero-grid, .form-wrap { grid-template-columns: 1fr; gap: 40px; }
   .why-grid { grid-template-columns: 1fr 1fr; }
   .price-panel { grid-template-columns: 1fr; gap: 28px; padding: 32px; }
