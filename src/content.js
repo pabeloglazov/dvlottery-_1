@@ -69,10 +69,10 @@ export const T = {
     why: {
       title: "Почему со мной спокойнее",
       items: [
-        "4 года опыта в подаче заявок на DV Lottery. Работаю вместе с иммиграционным адвокатом.",
-        "Среди моих клиентов есть выигравшие. Но гарантий не даёт никто: это лотерея.",
-        "Проверяю данные и дубликаты. Одна ошибка в заявке — и её дисквалифицируют.",
-        "Остаюсь на связи до проверки результата.",
+        { icon: "exp", t: "4 года опыта", d: "Подаю заявки на DV Lottery и работаю вместе с иммиграционным адвокатом." },
+        { icon: "win", t: "Есть выигравшие", d: "Среди моих клиентов есть выигравшие. Гарантий не даёт никто: это лотерея." },
+        { icon: "check", t: "Без ошибок и дублей", d: "Проверяю данные и дубликаты. Одна ошибка в заявке — и её дисквалифицируют." },
+        { icon: "chat", t: "На связи до результата", d: "Отвечаю на вопросы и помогаю проверить результат." },
       ],
     },
     faq: {
@@ -190,10 +190,10 @@ export const T = {
     why: {
       title: "Why work with me",
       items: [
-        "4 years of experience submitting DV Lottery entries. I work alongside an immigration attorney.",
-        "Some of my clients have been selected. Nobody can guarantee a win: it's a lottery.",
-        "I check data and duplicates. One mistake gets an entry disqualified.",
-        "I stay in touch until you check your result.",
+        { icon: "exp", t: "4 years of experience", d: "I submit DV Lottery entries and work alongside an immigration attorney." },
+        { icon: "win", t: "Clients have won", d: "Some of my clients have been selected. Nobody can guarantee a win: it's a lottery." },
+        { icon: "check", t: "No errors, no duplicates", d: "I check data and duplicates. One mistake gets an entry disqualified." },
+        { icon: "chat", t: "In touch until results", d: "I answer questions and help you check your result." },
       ],
     },
     faq: {

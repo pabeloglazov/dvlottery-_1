@@ -11,6 +11,13 @@ function detectLang() {
   return "ru";
 }
 
+const WHY_ICONS = {
+  exp: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z" /></svg>,
+  win: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5" /><circle cx="9" cy="11" r="2.2" /><path d="M5.8 16.2c.7-1.6 1.8-2.3 3.2-2.3s2.5.7 3.2 2.3M14.5 10h3.5M14.5 13.5h2.5" /></svg>,
+  check: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 21s7.5-3.6 7.5-9.6V5.6L12 3 4.5 5.6v5.8C4.5 17.4 12 21 12 21z" /><path d="M8.8 12.1l2.2 2.2 4.3-4.4" /></svg>,
+  chat: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 12.5a7.5 7.5 0 01-10.9 6.7L4 20.5l1.4-4.6A7.5 7.5 0 1120 12.5z" /><path d="M9 12h.01M12.5 12h.01M16 12h.01" /></svg>,
+};
+
 function Ticket({ t }) {
   return (
     <figure className="ticket" aria-label={t.head}>
@@ -107,20 +114,32 @@ export default function App() {
         </section>
 
         <section id="price" className="section section-tint">
-          <div className="wrap price-grid">
-            <div className="price">
-              <h2>{t.price.title}</h2>
-              <div className="price-row">
-                <div><span className="price-num">{PRICES.ru}</span><span className="price-where">{t.price.ru}</span></div>
-                <div><span className="price-num">{PRICES.us}</span><span className="price-where">{t.price.us}</span></div>
+          <div className="wrap">
+            <h2>{t.why.title}</h2>
+            <ul className="why-grid">
+              {t.why.items.map((x) => (
+                <li key={x.t}>
+                  <span className="why-icon" aria-hidden="true">{WHY_ICONS[x.icon]}</span>
+                  <h3>{x.t}</h3>
+                  <p>{x.d}</p>
+                </li>
+              ))}
+            </ul>
+
+            <div className="price-panel">
+              <div className="price-main">
+                <h2>{t.price.title}</h2>
+                <div className="price-row">
+                  <div><span className="price-num">{PRICES.ru}</span><span className="price-where">{t.price.ru}</span></div>
+                  <div><span className="price-num">{PRICES.us}</span><span className="price-where">{t.price.us}</span></div>
+                </div>
+                <p className="price-per">{t.price.per}</p>
+                <a className="btn btn-primary btn-lg price-cta" href="#form">{t.hero.cta}</a>
               </div>
-              <p className="price-per">{t.price.per}</p>
-              <ul className="ticks">{t.price.includes.map((x) => <li key={x}>{x}</li>)}</ul>
-              <p className="muted">{t.price.fee}</p>
-            </div>
-            <div className="why">
-              <h2>{t.why.title}</h2>
-              <ul className="why-list">{t.why.items.map((x) => <li key={x}>{x}</li>)}</ul>
+              <div className="price-side">
+                <ul className="ticks">{t.price.includes.map((x) => <li key={x}>{x}</li>)}</ul>
+                <p className="muted">{t.price.fee}</p>
+              </div>
             </div>
           </div>
         </section>

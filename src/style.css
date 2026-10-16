@@ -108,18 +108,29 @@ img { max-width: 100%; display: block; }
 .steps h3 { margin-top: 18px; font-size: 19px; }
 .steps p { margin-top: 8px; color: var(--ink-2); font-size: 15.5px; }
 
-.price-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; }
-.price-row { display: flex; gap: 40px; margin-top: 28px; }
+.why-grid { list-style: none; margin: 32px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.why-grid li { position: relative; padding: 24px 22px 22px; border-radius: var(--r-md); background: var(--paper); border: 1px solid var(--line); }
+.why-grid li::before { content: ""; position: absolute; left: 22px; right: 22px; top: -1px; height: 3px; border-radius: 0 0 3px 3px; background: var(--green); }
+.why-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--green-tint); color: var(--green); }
+.why-icon svg { width: 24px; height: 24px; }
+.why-grid h3 { margin-top: 18px; font-size: 19px; }
+.why-grid p { margin-top: 8px; color: var(--ink-2); font-size: 15.5px; }
+
+.price-panel { margin-top: 56px; display: grid; grid-template-columns: 1fr 1fr; gap: 48px; padding: 40px; border-radius: var(--r-lg); background: var(--ink); color: #fff; }
+.price-panel h2 { color: #fff; }
+.price-row { display: flex; gap: 40px; margin-top: 24px; }
 .price-row > div { display: flex; flex-direction: column; }
 .price-num { font-size: clamp(44px, 5vw, 60px); font-weight: 800; letter-spacing: -.03em; line-height: 1; font-variant-numeric: tabular-nums; }
-.price-where { margin-top: 8px; color: var(--ink-2); font-size: 15px; }
-.price-per { margin-top: 14px; font-size: 15px; color: var(--ink-3); }
-.ticks { list-style: none; padding: 0; margin: 24px 0; display: grid; gap: 10px; }
-.ticks li { position: relative; padding-left: 30px; }
-.ticks li::before { content: ""; position: absolute; left: 0; top: 4px; width: 18px; height: 18px; border-radius: 50%; background: var(--green-tint) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18'%3E%3Cpath d='M5 9.3l2.6 2.5L13 6.4' fill='none' stroke='%232e6a4e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/18px no-repeat; }
-.why-list { list-style: none; padding: 0; margin: 28px 0 0; display: grid; gap: 0; }
-.why-list li { padding: 18px 0; border-top: 1px solid var(--line); color: var(--ink-2); }
-.why-list li:last-child { border-bottom: 1px solid var(--line); }
+.price-where { margin-top: 8px; color: #b8c1d6; font-size: 15px; }
+.price-per { margin-top: 14px; font-size: 15px; color: #8f9ab3; }
+.price-cta { margin-top: 28px; }
+.price-panel .btn-primary { background: #5fa77f; color: var(--ink); }
+.price-panel .btn-primary:hover { background: #79b993; }
+.price-side { align-self: center; }
+.price-panel .muted { color: #8f9ab3; }
+.ticks { list-style: none; padding: 0; margin: 0 0 24px; display: grid; gap: 14px; }
+.ticks li { position: relative; padding-left: 32px; font-size: 16.5px; }
+.ticks li::before { content: ""; position: absolute; left: 0; top: 3px; width: 20px; height: 20px; border-radius: 50%; background: #5fa77f url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18'%3E%3Cpath d='M5 9.3l2.6 2.5L13 6.4' fill='none' stroke='%23142140' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/18px no-repeat; }
 
 /* Анкета */
 .form-section { background: linear-gradient(180deg, var(--paper), #e9eef4); }
@@ -223,7 +234,9 @@ img { max-width: 100%; display: block; }
   .topnav { display: none; }
   .lang { margin-left: auto; }
   .hero { padding: 40px 0 44px; }
-  .hero-grid, .price-grid, .form-wrap { grid-template-columns: 1fr; gap: 40px; }
+  .hero-grid, .form-wrap { grid-template-columns: 1fr; gap: 40px; }
+  .why-grid { grid-template-columns: 1fr 1fr; }
+  .price-panel { grid-template-columns: 1fr; gap: 28px; padding: 32px; }
   .ticket { transform: rotate(0); max-width: 460px; }
   .form-intro { position: static; }
   .steps { grid-template-columns: 1fr 1fr; gap: 32px 20px; }
@@ -239,6 +252,9 @@ img { max-width: 100%; display: block; }
   .section { padding: 56px 0; }
   .steps { grid-template-columns: 1fr; }
   .price-row { gap: 28px; }
+  .why-grid { grid-template-columns: 1fr; }
+  .price-panel { padding: 28px 20px; margin-top: 40px; }
+  .price-cta { width: 100%; }
   .form-card { padding: 20px 16px; border-radius: 16px; }
   .done-card { padding: 0; }
   .done-card .done, .next-card, .done-more { padding-left: 16px; padding-right: 16px; }
