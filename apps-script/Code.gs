@@ -325,7 +325,8 @@ function api_(d) {
     if (!checkToken_(d.token)) return { ok: false, auth: false, error: 'Нужно войти' };
     if (d.action === 'logout') { PropertiesService.getScriptProperties().deleteProperty('sess_' + sha_(d.token)); return { ok: true }; }
     const fns = { adminData: adminData, adminSaveSub: adminSaveSub, adminAddToSeason: adminAddToSeason,
-      adminSetCurrentSeason: adminSetCurrentSeason, adminAddMember: adminAddMember, adminSetPhoto: adminSetPhoto, adminDeleteClient: adminDeleteClient };
+      adminSetCurrentSeason: adminSetCurrentSeason, adminAddMember: adminAddMember, adminSetPhoto: adminSetPhoto, adminDeleteClient: adminDeleteClient,
+      adminUpdateField: adminUpdateField, adminUpdateMember: adminUpdateMember, adminRemoveMember: adminRemoveMember };
     const fn = fns[d.action];
     if (!fn) return { ok: false, error: 'Неизвестное действие' };
     API_AUTH_ = true;
@@ -527,6 +528,101 @@ function adminDeleteClient(key, rows) {
   } finally { lock.releaseLock(); }
 }
 
+// ---------- Редактирование данных клиента и семьи ----------
+const EDITABLE_ = { name: 'name', sex: 'sex', dob: 'birth', birthCity: 'birthCity', birthCountry: 'birthCountry', country: 'country',
+  address: 'address', email: 'email', telegram: 'telegram', education: 'education', marital: 'marital' };
+
+function parseDob_(s) {
+  const m = String(s || '').match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (!m) throw new Error('Дата в формате ДД.ММ.ГГГГ');
+  const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  if (d.getDate() !== Number(m[1]) || d.getMonth() !== Number(m[2]) - 1) throw new Error('Такой даты нет');
+  return d;
+}
+
+/** Изменить поле клиента. Имя и дата рождения — во всех его строках (они образуют ключ), остальное — в последней строке. */
+function adminUpdateField(key, rows, field, value) {
+  assertOwner_();
+  const colKey = EDITABLE_[field];
+  if (!colKey) throw new Error('Это поле нельзя менять');
+  value = String(value == null ? '' : value).trim().slice(0, 1000);
+  if (field === 'name') { value = value.toUpperCase().replace(/\s+/g, ' '); if (!/^[A-Z][A-Z .'\-]*$/.test(value)) throw new Error('Имя латиницей, как в паспорте'); }
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const sh = responsesSheet_();
+    const v = sh.getDataRange().getValues();
+    const c = colIndex_(v[0].map(String));
+    if (c[colKey] === undefined) throw new Error('Нет колонки для этого поля');
+    const mine = (rows || []).map(Number).filter(function (r) {
+      return r >= 2 && r <= v.length && keyOf_(String(v[r - 1][c.name] || '').trim(), fmtDate_(v[r - 1][c.birth], 'dd.MM.yyyy')) === key;
+    });
+    if (!mine.length) throw new Error('Клиент не найден — обновите страницу');
+    const target = (field === 'name' || field === 'dob') ? mine : [Math.max.apply(null, mine)];
+    const cellVal = field === 'dob' ? parseDob_(value) : value;
+    target.forEach(function (r) { sh.getRange(r, c[colKey] + 1).setValue(cellVal); });
+    const last = Math.max.apply(null, mine);
+    const newKey = keyOf_(field === 'name' ? value : String(v[last - 1][c.name] || '').trim(),
+      field === 'dob' ? value : fmtDate_(v[last - 1][c.birth], 'dd.MM.yyyy'));
+    if (newKey !== key) {
+      const ss = subsSheet_();
+      const sv = ss.getDataRange().getValues();
+      for (let i = 1; i < sv.length; i++) if (String(sv[i][1]) === key) {
+        ss.getRange(i + 1, 1, 1, 2).setValues([[newKey.split('|')[0], newKey]]);
+      }
+    }
+    return { key: newKey };
+  } finally { lock.releaseLock(); }
+}
+
+function familyCell_(row, kind) {
+  row = Number(row);
+  const sh = responsesSheet_();
+  if (!(row >= 2 && row <= sh.getLastRow())) throw new Error('Нет такой строки');
+  const c = colIndex_(sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0]);
+  const col = kind === 'spouse' ? c.spouseData : c.kidsData;
+  if (col === undefined) throw new Error('В таблице нет колонки для данных семьи');
+  const cell = sh.getRange(row, col + 1);
+  const lines = String(cell.getValue() || '').split('\n').map(function (l) { return l.replace(/^\s*\d+\.\s*/, '').trim(); }).filter(String);
+  return { sh: sh, c: c, cell: cell, lines: lines, applicant: String(sh.getRange(row, c.name + 1).getDisplayValue()).toUpperCase() };
+}
+function writeFamily_(f, kind, row) {
+  const text = kind === 'spouse' ? (f.lines[0] || '') : f.lines.map(function (l, i) { return (i + 1) + '. ' + l; }).join('\n');
+  f.cell.setValue(text);
+  if (kind !== 'spouse' && f.c.children !== undefined) f.sh.getRange(Number(row), f.c.children + 1).setValue(f.lines.length ? 'Да, ' + f.lines.length : 'Нет');
+  return text;
+}
+
+/** Изменить супруга(у) или ребёнка (kind: 'spouse' | 'child', idx — номер в списке). Новое фото — в папку. */
+function adminUpdateMember(row, kind, idx, p) {
+  assertOwner_();
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const f = familyCell_(row, kind);
+    idx = Number(idx);
+    if (!(idx >= 0 && idx < f.lines.length)) throw new Error('Не найдено — обновите страницу');
+    const oldPhoto = (f.lines[idx].match(/фото:\s*(\S+)/) || [])[1] || '';
+    const url = savePhotoFile_(p.photo, String(p.name || '') + (kind === 'spouse' ? ' (SPOUSE OF ' : ' (CHILD OF ') + f.applicant + ')');
+    if (p.dob) parseDob_(p.dob);
+    f.lines[idx] = [String(p.name || '').trim().toUpperCase().slice(0, 200), String(p.sex || '').slice(0, 2), String(p.dob || '').slice(0, 10),
+      String(p.city || '').trim().toUpperCase().slice(0, 100), String(p.country || '').trim().toUpperCase().slice(0, 100),
+      'фото: ' + (url || (/^https?:/.test(oldPhoto) ? oldPhoto : 'пришлёт в Telegram'))].join(', ');
+    return writeFamily_(f, kind, row);
+  } finally { lock.releaseLock(); }
+}
+
+/** Убрать супруга(у) или ребёнка из заявки. */
+function adminRemoveMember(row, kind, idx) {
+  assertOwner_();
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const f = familyCell_(row, kind);
+    idx = Number(idx);
+    if (!(idx >= 0 && idx < f.lines.length)) throw new Error('Не найдено — обновите страницу');
+    f.lines.splice(idx, 1);
+    return { text: writeFamily_(f, kind, row), marital: '' };
+  } finally { lock.releaseLock(); }
+}
+
 function adminSetCurrentSeason(season) {
   assertOwner_();
   season = Number(season);
@@ -626,6 +722,21 @@ a{color:var(--green)}
 .menu button:hover,.menu button.on{background:var(--tint)}
 .menu .sub{font-weight:500;color:var(--ink3);font-size:12.5px}
 .menu hr{border:0;border-top:1px solid var(--line2);margin:6px 4px}
+.brand .lbl{flex:1}
+.nav-toggle{width:28px;height:28px;display:grid;place-items:center;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:#b8c1d6;cursor:pointer;flex:none}
+.nav-toggle:hover{color:#fff;background:rgba(255,255,255,.1)}
+.nav-item .lab{display:flex;align-items:center}
+.nav-item .ic{display:none}
+.nav{transition:flex-basis .18s ease}
+.nav.min{flex-basis:72px;padding:18px 10px}
+.nav.min .lbl,.nav.min .nav-label,.nav.min .season-btn small,.nav.min .season-btn svg,.nav.min .nav-foot a{display:none}
+.nav.min .brand{flex-direction:column;gap:10px;padding:0}
+.nav.min .season-btn{justify-content:center;padding:8px 0}.nav.min .season-btn b{font-size:13px}
+.nav.min .menu{right:auto;width:230px}
+.nav.min .nav-item{flex-direction:column;justify-content:center;gap:3px;padding:8px 0}
+.nav.min .nav-item .dot{margin:0}
+.nav.min .nav-item .ic{display:block;font-size:13px;line-height:1;color:#b8c1d6}
+.nav.min .nav-item .n{font-size:12.5px}
 .nav-label{font-size:12px;color:#8f9ab3;padding:0 10px 4px}
 .nav-list{display:flex;flex-direction:column;gap:2px}
 .nav-item{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;padding:8px 10px;border:0;border-radius:9px;background:transparent;color:#dfe4ef;font-size:14.5px;text-align:left}
@@ -739,7 +850,9 @@ h1{margin:2px 0 0;font-size:30px;font-weight:800;letter-spacing:-.02em;line-heig
   .nav{position:static;height:auto;flex:none;padding:12px;gap:10px}
   .nav-top{display:flex;gap:10px;align-items:center}
   .nav-top .season{flex:1}
-  .nav-label,.nav-foot{display:none}
+  .nav-label,.nav-foot,.nav-toggle{display:none}
+  .nav.min{padding:12px}.nav.min .lbl,.nav.min .season-btn small{display:inline}
+  .nav.min .nav-item{flex-direction:row;padding:8px 10px}.nav.min .nav-item .ic,.nav.min .season-btn small{display:none}.nav.min .brand{flex-direction:row}.nav.min .season-btn svg{display:block}.nav.min .season-btn{justify-content:space-between;padding:9px 12px}.nav.min .nav-item .dot{display:none}
   .nav-list{flex-direction:row;overflow-x:auto;gap:6px;scrollbar-width:none}
   .nav-list::-webkit-scrollbar{display:none}
   .nav-item{flex:none;width:auto;white-space:nowrap;border:1px solid rgba(255,255,255,.14)}
@@ -768,7 +881,7 @@ var STATUS_NAV = { 'Новая': 'Новые', 'Связался': 'Связал
 var DOT = { 'Новая': '#e0a83a', 'Связался': '#7f9fd9', 'Оплачено': '#5fa77f', 'Подано': '#b8c1d6' };
 var PILL = { 'Новая': 'p-new', 'Связался': 'p-contact', 'Оплачено': 'p-paid', 'Подано': 'p-done', 'Выиграл': 'p-win', 'Не выиграл': 'p-lose' };
 var AVC = ['#dfe8f5', '#e2eee6', '#f6e7d4', '#ece0fa', '#f1f3f7'];
-var S = { data: null, season: null, view: 'all', q: '', sel: null, menu: false, fam: null, copied: '', busy: false, edit: null, memDel: null };
+var S = { navMin: (function () { try { return localStorage.getItem('dv_nav_min') === '1'; } catch (e) { return false; } })(), data: null, season: null, view: 'all', q: '', sel: null, menu: false, fam: null, copied: '', busy: false, edit: null, memDel: null };
 var PEN = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 2.5l2.5 2.5L5.5 13H3v-2.5z"/><path d="M9.5 4l2.5 2.5"/></svg>';
 var XIC = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
 var FIELDS = [['name','Фамилия и имя'],['sex','Пол','sel',['М','Ж']],['dob','Дата рождения'],['birthCity','Город рождения'],['birthCountry','Страна рождения'],['country','Страна проживания'],['address','Адрес','area'],['email','Email'],['telegram','Telegram'],['education','Образование'],['marital','Семейное положение','sel',['Не женат / не замужен','Женат / замужем','Разведен / разведена','Вдовец / вдова']]];
@@ -982,11 +1095,11 @@ function renderNav(y) {
   S.data.clients.forEach(function (c) { seasonsOf(c).forEach(function (s) { seasons[s] = 1; }); });
   var years = Object.keys(seasons).map(Number).sort(function (a, b) { return b - a; });
   var item = function (key, label, n, extra) {
-    return '<button class="nav-item' + (S.view === key ? ' on' : '') + '" data-act="view" data-v="' + key + '"><span>' + (extra || '') + esc(label) + '</span>' + n + '</button>';
+    return '<button class="nav-item' + (S.view === key ? ' on' : '') + '" data-act="view" data-v="' + key + '" title="' + esc(label) + '"><span class="lab">' + (extra || '') + '<span class="lbl">' + esc(label) + '</span></span>' + n + '</button>';
   };
   var inv = inviteList(S.data.current).length;
-  var h = '<nav class="nav" aria-label="Разделы"><div class="nav-top"><div class="brand"><span class="mark">GC</span>Green Card</div>' +
-    '<div class="season"><button class="season-btn" data-act="menu" aria-expanded="' + S.menu + '"><span><small>Сезон</small><b>DV-' + y + '</b></span><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>';
+  var h = '<nav class="nav' + (S.navMin ? ' min' : '') + '" aria-label="Разделы"><div class="nav-top"><div class="brand"><span class="mark">GC</span><span class="lbl">Green Card</span><button class="nav-toggle" data-act="navMin" title="' + (S.navMin ? 'Развернуть панель' : 'Свернуть панель') + '" aria-label="' + (S.navMin ? 'Развернуть панель' : 'Свернуть панель') + '"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + (S.navMin ? 'M6 4l4 4-4 4' : 'M10 4L6 8l4 4') + '"/></svg></button></div>' +
+    '<div class="season"><button class="season-btn" data-act="menu" aria-expanded="' + S.menu + '"><span><small>Сезон</small><b><span class="lbl">DV-</span>' + y + '</b></span><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>';
   if (S.menu) {
     h += '<div class="menu" role="menu">' + years.map(function (s) {
       return '<button role="menuitem" class="' + (s === y ? 'on' : '') + '" data-act="season" data-v="' + s + '"><span>DV-' + s + (s === S.data.current ? ' · текущий' : '') + '</span><span class="sub">' + inSeason(s).length + '</span></button>';
@@ -995,9 +1108,9 @@ function renderNav(y) {
   h += '</div></div><div><div class="nav-label">Воронка сезона</div><div class="nav-list">' +
     item('all', 'Все в сезоне', '<span class="n">' + ins.length + '</span>', '<span class="dot" style="background:#fff"></span>') +
     STATUSES.map(function (s) { return item(s, STATUS_NAV[s], '<span class="n">' + counts[s] + '</span>', '<span class="dot" style="background:' + DOT[s] + '"></span>'); }).join('') +
-    item('invite', 'Пригласить снова', inv ? '<span class="badge">' + inv + '</span>' : '<span class="n">0</span>') +
-    item('won', 'Выиграли', '<span class="n">' + wonList().length + '</span>') +
-    item('everyone', 'Все клиенты', '<span class="n">' + S.data.clients.length + '</span>') +
+    item('invite', 'Пригласить снова', inv ? '<span class="badge">' + inv + '</span>' : '<span class="n">0</span>', '<span class="ic">↻</span>') +
+    item('won', 'Выиграли', '<span class="n">' + wonList().length + '</span>', '<span class="ic">★</span>') +
+    item('everyone', 'Все клиенты', '<span class="n">' + S.data.clients.length + '</span>', '<span class="ic">☰</span>') +
     '</div></div><div class="nav-foot"><a href="' + esc(S.data.sheetUrl) + '" target="_blank" rel="noopener">Таблица →</a><a href="' + esc(S.data.folderUrl) + '" target="_blank" rel="noopener">Папка с фото →</a>' + (API ? '<a href="#" data-act="logout">Выйти</a>' : '') + '</div></nav>';
   return h;
 }
@@ -1080,7 +1193,7 @@ function renderCard(c, y) {
     '<span class="row-tags">' + (s ? pill(s.result || s.status) : '<span class="pill p-none">нет в DV-' + y + '</span>') + '<span class="tag">' + (fam.length ? 'семья · ' + (fam.length + 1) : 'один') + '</span>' +
     (missing ? '<span class="pill" style="background:#fbe3e4;color:#9b2730">нет фото: ' + missing + '</span>' : '<span class="pill p-paid">все фото есть</span>') + '</span></div>' +
     '<div class="head-actions">' + (tg ? '<a class="btn pri" href="' + esc(tg) + '" target="_blank" rel="noopener">Telegram</a>' : '') + (c.email ? '<a class="btn" href="mailto:' + esc(c.email) + '">Email</a>' : '') + '<button class="btn" data-act="copyAll">Скопировать всё</button>' +
-    (!c.photo ? '<label class="btn file">Загрузить фото<input type="file" accept="image/*" data-act="photo"></label>' : '') + '</div></div>';
+    '<label class="btn file">' + (c.photo ? 'Заменить фото' : 'Загрузить фото') + '<input type="file" accept="image/*" data-act="photo"></label>' + '</div></div>';
 
   if (s) {
     h += '<section class="card pad" style="display:flex;flex-direction:column;gap:16px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap"><h2 class="sec-title" style="font-size:18px">Подача DV-' + y + '</h2><span class="muted">' + (s.date ? 'анкета ' + esc(s.date) : '') + '</span></div>' +
@@ -1169,7 +1282,8 @@ document.addEventListener('click', function (e) {
   if (a === 'resend') { L.stage = 'start'; sendCode(); return; }
   if (a === 'logout') { e.preventDefault(); logout(); return; }
   if (!S.data) return;
-  if (a === 'menu') { S.menu = !S.menu; render(); }
+  if (a === 'navMin') { S.navMin = !S.navMin; S.menu = false; try { localStorage.setItem('dv_nav_min', S.navMin ? '1' : ''); } catch (e) {} render(); }
+  else if (a === 'menu') { S.menu = !S.menu; render(); }
   else if (a === 'season') { var keep = el.hasAttribute('data-keep'); S.season = Number(v); S.menu = false; if (!keep) S.sel = null; S.view = 'all'; render(); window.scrollTo(0, 0); }
   else if (a === 'newSeason') {
     S.menu = false;

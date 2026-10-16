@@ -99,7 +99,8 @@ function api_(d) {
     if (!checkToken_(d.token)) return { ok: false, auth: false, error: 'Нужно войти' };
     if (d.action === 'logout') { PropertiesService.getScriptProperties().deleteProperty('sess_' + sha_(d.token)); return { ok: true }; }
     const fns = { adminData: adminData, adminSaveSub: adminSaveSub, adminAddToSeason: adminAddToSeason,
-      adminSetCurrentSeason: adminSetCurrentSeason, adminAddMember: adminAddMember, adminSetPhoto: adminSetPhoto, adminDeleteClient: adminDeleteClient };
+      adminSetCurrentSeason: adminSetCurrentSeason, adminAddMember: adminAddMember, adminSetPhoto: adminSetPhoto, adminDeleteClient: adminDeleteClient,
+      adminUpdateField: adminUpdateField, adminUpdateMember: adminUpdateMember, adminRemoveMember: adminRemoveMember };
     const fn = fns[d.action];
     if (!fn) return { ok: false, error: 'Неизвестное действие' };
     API_AUTH_ = true;
@@ -298,6 +299,101 @@ function adminDeleteClient(key, rows) {
       ss.getRange(2, 9, col.length, 1).setValues(col);
     }
     return del.length;
+  } finally { lock.releaseLock(); }
+}
+
+// ---------- Редактирование данных клиента и семьи ----------
+const EDITABLE_ = { name: 'name', sex: 'sex', dob: 'birth', birthCity: 'birthCity', birthCountry: 'birthCountry', country: 'country',
+  address: 'address', email: 'email', telegram: 'telegram', education: 'education', marital: 'marital' };
+
+function parseDob_(s) {
+  const m = String(s || '').match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (!m) throw new Error('Дата в формате ДД.ММ.ГГГГ');
+  const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  if (d.getDate() !== Number(m[1]) || d.getMonth() !== Number(m[2]) - 1) throw new Error('Такой даты нет');
+  return d;
+}
+
+/** Изменить поле клиента. Имя и дата рождения — во всех его строках (они образуют ключ), остальное — в последней строке. */
+function adminUpdateField(key, rows, field, value) {
+  assertOwner_();
+  const colKey = EDITABLE_[field];
+  if (!colKey) throw new Error('Это поле нельзя менять');
+  value = String(value == null ? '' : value).trim().slice(0, 1000);
+  if (field === 'name') { value = value.toUpperCase().replace(/\s+/g, ' '); if (!/^[A-Z][A-Z .'\-]*$/.test(value)) throw new Error('Имя латиницей, как в паспорте'); }
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const sh = responsesSheet_();
+    const v = sh.getDataRange().getValues();
+    const c = colIndex_(v[0].map(String));
+    if (c[colKey] === undefined) throw new Error('Нет колонки для этого поля');
+    const mine = (rows || []).map(Number).filter(function (r) {
+      return r >= 2 && r <= v.length && keyOf_(String(v[r - 1][c.name] || '').trim(), fmtDate_(v[r - 1][c.birth], 'dd.MM.yyyy')) === key;
+    });
+    if (!mine.length) throw new Error('Клиент не найден — обновите страницу');
+    const target = (field === 'name' || field === 'dob') ? mine : [Math.max.apply(null, mine)];
+    const cellVal = field === 'dob' ? parseDob_(value) : value;
+    target.forEach(function (r) { sh.getRange(r, c[colKey] + 1).setValue(cellVal); });
+    const last = Math.max.apply(null, mine);
+    const newKey = keyOf_(field === 'name' ? value : String(v[last - 1][c.name] || '').trim(),
+      field === 'dob' ? value : fmtDate_(v[last - 1][c.birth], 'dd.MM.yyyy'));
+    if (newKey !== key) {
+      const ss = subsSheet_();
+      const sv = ss.getDataRange().getValues();
+      for (let i = 1; i < sv.length; i++) if (String(sv[i][1]) === key) {
+        ss.getRange(i + 1, 1, 1, 2).setValues([[newKey.split('|')[0], newKey]]);
+      }
+    }
+    return { key: newKey };
+  } finally { lock.releaseLock(); }
+}
+
+function familyCell_(row, kind) {
+  row = Number(row);
+  const sh = responsesSheet_();
+  if (!(row >= 2 && row <= sh.getLastRow())) throw new Error('Нет такой строки');
+  const c = colIndex_(sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0]);
+  const col = kind === 'spouse' ? c.spouseData : c.kidsData;
+  if (col === undefined) throw new Error('В таблице нет колонки для данных семьи');
+  const cell = sh.getRange(row, col + 1);
+  const lines = String(cell.getValue() || '').split('\n').map(function (l) { return l.replace(/^\s*\d+\.\s*/, '').trim(); }).filter(String);
+  return { sh: sh, c: c, cell: cell, lines: lines, applicant: String(sh.getRange(row, c.name + 1).getDisplayValue()).toUpperCase() };
+}
+function writeFamily_(f, kind, row) {
+  const text = kind === 'spouse' ? (f.lines[0] || '') : f.lines.map(function (l, i) { return (i + 1) + '. ' + l; }).join('\n');
+  f.cell.setValue(text);
+  if (kind !== 'spouse' && f.c.children !== undefined) f.sh.getRange(Number(row), f.c.children + 1).setValue(f.lines.length ? 'Да, ' + f.lines.length : 'Нет');
+  return text;
+}
+
+/** Изменить супруга(у) или ребёнка (kind: 'spouse' | 'child', idx — номер в списке). Новое фото — в папку. */
+function adminUpdateMember(row, kind, idx, p) {
+  assertOwner_();
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const f = familyCell_(row, kind);
+    idx = Number(idx);
+    if (!(idx >= 0 && idx < f.lines.length)) throw new Error('Не найдено — обновите страницу');
+    const oldPhoto = (f.lines[idx].match(/фото:\s*(\S+)/) || [])[1] || '';
+    const url = savePhotoFile_(p.photo, String(p.name || '') + (kind === 'spouse' ? ' (SPOUSE OF ' : ' (CHILD OF ') + f.applicant + ')');
+    if (p.dob) parseDob_(p.dob);
+    f.lines[idx] = [String(p.name || '').trim().toUpperCase().slice(0, 200), String(p.sex || '').slice(0, 2), String(p.dob || '').slice(0, 10),
+      String(p.city || '').trim().toUpperCase().slice(0, 100), String(p.country || '').trim().toUpperCase().slice(0, 100),
+      'фото: ' + (url || (/^https?:/.test(oldPhoto) ? oldPhoto : 'пришлёт в Telegram'))].join(', ');
+    return writeFamily_(f, kind, row);
+  } finally { lock.releaseLock(); }
+}
+
+/** Убрать супруга(у) или ребёнка из заявки. */
+function adminRemoveMember(row, kind, idx) {
+  assertOwner_();
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const f = familyCell_(row, kind);
+    idx = Number(idx);
+    if (!(idx >= 0 && idx < f.lines.length)) throw new Error('Не найдено — обновите страницу');
+    f.lines.splice(idx, 1);
+    return { text: writeFamily_(f, kind, row), marital: '' };
   } finally { lock.releaseLock(); }
 }
 
