@@ -156,6 +156,7 @@ function doGet(e) {
 function doPost(e) {
   try {
     const d = JSON.parse(e.postData.contents || '{}');
+    if (d.action) return json_(api_(d)); // админка на сайте
     if (d.website) return json_({ ok: true }); // ловушка для ботов
 
     const form = openForm_();
@@ -250,10 +251,92 @@ const COLS = {
   confirm: ['column 1', 'номер подтверждения'], result: ['результат'], status: ['статус'], note: ['заметка']
 };
 
+let API_AUTH_ = false; // true, когда запрос пришёл с сайта с действующим ключом входа
+
 function isOwner_() {
   try { return Session.getActiveUser().getEmail().toLowerCase() === OWNER_EMAIL; } catch (e) { return false; }
 }
-function assertOwner_() { if (!isOwner_()) throw new Error('Нет доступа'); }
+function assertOwner_() { if (!API_AUTH_ && !isOwner_()) throw new Error('Нет доступа'); }
+
+/* ---------- Вход в админку на сайте: код на почту владельца ---------- */
+
+const OTP_TTL_SEC = 600;          // код действует 10 минут
+const OTP_MAX_TRIES = 5;          // попыток ввода на один код
+const OTP_MAX_SENDS = 5;          // писем с кодом за 10 минут
+const SESSION_DAYS = 30;
+
+function sha_(s) {
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(s), Utilities.Charset.UTF_8)
+    .map(function (b) { return ('0' + (b & 255).toString(16)).slice(-2); }).join('');
+}
+function maskEmail_(e) { const p = e.split('@'); return p[0].slice(0, 2) + '•••' + p[0].slice(-1) + '@' + p[1]; }
+
+function requestCode_() {
+  const cache = CacheService.getScriptCache();
+  const sent = Number(cache.get('otp_sends') || 0);
+  if (sent >= OTP_MAX_SENDS) return { ok: false, error: 'Слишком много запросов. Попробуйте через 10 минут.' };
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  const salt = Utilities.getUuid();
+  cache.put('otp', JSON.stringify({ h: sha_(salt + code), s: salt, t: 0 }), OTP_TTL_SEC);
+  cache.put('otp_sends', String(sent + 1), OTP_TTL_SEC);
+  MailApp.sendEmail({
+    to: OWNER_EMAIL,
+    subject: 'Код входа в админку DV Lottery: ' + code,
+    body: 'Код для входа в админку заявок DV Lottery: ' + code + '\n\nКод действует 10 минут. Если вы не запрашивали вход — просто проигнорируйте письмо.',
+    name: 'Beloglazov Green Card'
+  });
+  return { ok: true, email: maskEmail_(OWNER_EMAIL) };
+}
+
+function verifyCode_(code) {
+  const cache = CacheService.getScriptCache();
+  const raw = cache.get('otp');
+  if (!raw) return { ok: false, error: 'Код устарел. Запросите новый.' };
+  const o = JSON.parse(raw);
+  if (o.t >= OTP_MAX_TRIES) { cache.remove('otp'); return { ok: false, error: 'Слишком много попыток. Запросите новый код.' }; }
+  if (sha_(o.s + String(code || '').replace(/\D/g, '')) !== o.h) {
+    o.t++; cache.put('otp', JSON.stringify(o), OTP_TTL_SEC);
+    return { ok: false, error: 'Неверный код. Осталось попыток: ' + (OTP_MAX_TRIES - o.t) };
+  }
+  cache.remove('otp');
+  const token = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty('sess_' + sha_(token), String(Date.now() + SESSION_DAYS * 864e5));
+  cleanupSessions_(props);
+  return { ok: true, token: token };
+}
+
+function checkToken_(token) {
+  if (!token || String(token).length < 40) return false;
+  const exp = Number(PropertiesService.getScriptProperties().getProperty('sess_' + sha_(token)) || 0);
+  return exp > Date.now();
+}
+
+function cleanupSessions_(props) {
+  const all = props.getProperties(), now = Date.now();
+  Object.keys(all).forEach(function (k) { if (k.indexOf('sess_') === 0 && Number(all[k]) < now) props.deleteProperty(k); });
+}
+
+/** API для админки на сайте: { action, token, args }. */
+function api_(d) {
+  try {
+    if (d.action === 'requestCode') return requestCode_();
+    if (d.action === 'verifyCode') return verifyCode_(d.code);
+    if (!checkToken_(d.token)) return { ok: false, auth: false, error: 'Нужно войти' };
+    if (d.action === 'logout') { PropertiesService.getScriptProperties().deleteProperty('sess_' + sha_(d.token)); return { ok: true }; }
+    const fns = { adminData: adminData, adminSaveSub: adminSaveSub, adminAddToSeason: adminAddToSeason,
+      adminSetCurrentSeason: adminSetCurrentSeason, adminAddMember: adminAddMember, adminSetPhoto: adminSetPhoto };
+    const fn = fns[d.action];
+    if (!fn) return { ok: false, error: 'Неизвестное действие' };
+    API_AUTH_ = true;
+    return { ok: true, result: fn.apply(null, Array.isArray(d.args) ? d.args : []) };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message || err) };
+  } finally { API_AUTH_ = false; }
+}
+
+/** Разовый запуск из редактора: даёт скрипту разрешение отправлять письма с кодом. */
+function authorizeMail() { return MailApp.getRemainingDailyQuota(); }
 
 function responsesSheet_() {
   let id = RESPONSES_SHEET_ID;
@@ -657,9 +740,75 @@ function copyText(text, label) {
   var fb = function () { var ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch (e) { toast('Не удалось скопировать'); } ta.remove(); };
   if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fb); else fb();
 }
+/* ---------- связь с сервером ----------
+   Внутри Apps Script — google.script.run (вход через Google-аккаунт).
+   На сайте (window.ADMIN_API_URL) — запросы к веб-приложению с ключом входа по коду из почты. */
+var API = window.ADMIN_API_URL || '';
+function getToken() { try { return localStorage.getItem('dv_admin_token') || ''; } catch (e) { return ''; } }
+function setToken(t) { try { if (t) localStorage.setItem('dv_admin_token', t); else localStorage.removeItem('dv_admin_token'); } catch (e) {} }
+function post(body) {
+  return fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) }).then(function (r) { return r.json(); });
+}
 function run(fn, args, ok, fail) {
-  var r = google.script.run.withSuccessHandler(function (x) { ok && ok(x); }).withFailureHandler(function (e) { toast('Ошибка: ' + (e && e.message || e)); fail && fail(e); });
-  r[fn].apply(r, args);
+  if (!API) {
+    var r = google.script.run.withSuccessHandler(function (x) { ok && ok(x); }).withFailureHandler(function (e) { toast('Ошибка: ' + (e && e.message || e)); fail && fail(e); });
+    r[fn].apply(r, args);
+    return;
+  }
+  post({ action: fn, args: args, token: getToken() }).then(function (j) {
+    if (j.ok) { ok && ok(j.result); return; }
+    if (j.auth === false) { setToken(''); S.data = null; renderLogin(); return; }
+    toast('Ошибка: ' + j.error); fail && fail(j.error);
+  }, function () { toast('Нет связи с сервером. Проверьте интернет.'); fail && fail('network'); });
+}
+
+/* ---------- вход по коду ---------- */
+var L = { stage: 'start', busy: false, email: '', error: '' };
+function renderLogin() {
+  var h = '<div style="min-height:100vh;display:grid;place-items:center;padding:20px">' +
+    '<form id="login" class="card" style="width:100%;max-width:380px;padding:28px 24px;display:flex;flex-direction:column;gap:14px">' +
+    '<div style="display:flex;align-items:center;gap:10px"><span class="mark">GC</span><b style="font-size:17px">Заявки DV Lottery</b></div>';
+  if (L.stage === 'start') {
+    h += '<p class="muted" style="margin:0;font-size:14.5px">Вход только для владельца. Пришлю одноразовый код на почту.</p>' +
+      '<button class="btn pri" type="submit" style="padding:12px"' + (L.busy ? ' disabled' : '') + '>' + (L.busy ? 'Отправляю…' : 'Отправить код на почту') + '</button>';
+  } else {
+    h += '<p class="muted" style="margin:0;font-size:14.5px">Код отправлен на ' + esc(L.email) + '. Он действует 10 минут.</p>' +
+      '<label class="field">Код из письма<input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••" style="font-size:22px;letter-spacing:.3em;text-align:center"></label>' +
+      '<button class="btn pri" type="submit" style="padding:12px"' + (L.busy ? ' disabled' : '') + '>' + (L.busy ? 'Проверяю…' : 'Войти') + '</button>' +
+      '<button class="btn" type="button" data-act="resend">Отправить код ещё раз</button>';
+  }
+  if (L.error) h += '<p style="margin:0;color:var(--red);font-size:14px">' + esc(L.error) + '</p>';
+  h += '</form></div>';
+  document.getElementById('app').innerHTML = h;
+  var c = document.getElementById('code'); if (c) c.focus();
+}
+function sendCode() {
+  L.busy = true; L.error = ''; renderLogin();
+  post({ action: 'requestCode' }).then(function (j) {
+    L.busy = false;
+    if (j.ok) { L.stage = 'code'; L.email = j.email; } else L.error = j.error;
+    renderLogin();
+  }, function () { L.busy = false; L.error = 'Нет связи с сервером'; renderLogin(); });
+}
+function verify(code) {
+  L.busy = true; L.error = ''; renderLogin();
+  post({ action: 'verifyCode', code: code }).then(function (j) {
+    L.busy = false;
+    if (j.ok) { setToken(j.token); L = { stage: 'start', busy: false, email: '', error: '' }; document.getElementById('app').innerHTML = '<div class="loading">Загружаю заявки…</div>'; load(); }
+    else { L.error = j.error; renderLogin(); }
+  }, function () { L.busy = false; L.error = 'Нет связи с сервером'; renderLogin(); });
+}
+document.addEventListener('submit', function (e) {
+  if (e.target.id !== 'login') return;
+  e.preventDefault();
+  if (L.busy) return;
+  if (L.stage === 'start') sendCode();
+  else { var v = (document.getElementById('code').value || '').replace(/\D/g, ''); if (v.length !== 6) { L.error = 'Введите 6 цифр из письма'; renderLogin(); return; } verify(v); }
+});
+function logout() {
+  if (!confirm('Выйти из админки на этом устройстве?')) return;
+  post({ action: 'logout', token: getToken() }).then(function () {}, function () {});
+  setToken(''); S.data = null; S.sel = null; renderLogin();
 }
 
 /* ---------- данные ---------- */
@@ -699,7 +848,7 @@ function load(keepSel) {
     if (!S.season) S.season = d.current;
     if (!keepSel) S.sel = null;
     render();
-  }, function () { document.getElementById('app').innerHTML = '<div class="loading">Не удалось загрузить данные. Обновите страницу.</div>'; });
+  }, function () { if (!S.data && !(API && !getToken())) document.getElementById('app').innerHTML = '<div class="loading">Не удалось загрузить данные. Обновите страницу.</div>'; });
 }
 
 function saveSub(c, y, patch, msg) {
@@ -772,7 +921,7 @@ function renderNav(y) {
     item('invite', 'Пригласить снова', inv ? '<span class="badge">' + inv + '</span>' : '<span class="n">0</span>') +
     item('won', 'Выиграли', '<span class="n">' + wonList().length + '</span>') +
     item('everyone', 'Все клиенты', '<span class="n">' + S.data.clients.length + '</span>') +
-    '</div></div><div class="nav-foot"><a href="' + esc(S.data.sheetUrl) + '" target="_blank" rel="noopener">Таблица →</a><a href="' + esc(S.data.folderUrl) + '" target="_blank" rel="noopener">Папка с фото →</a></div></nav>';
+    '</div></div><div class="nav-foot"><a href="' + esc(S.data.sheetUrl) + '" target="_blank" rel="noopener">Таблица →</a><a href="' + esc(S.data.folderUrl) + '" target="_blank" rel="noopener">Папка с фото →</a>' + (API ? '<a href="#" data-act="logout">Выйти</a>' : '') + '</div></nav>';
   return h;
 }
 
@@ -914,6 +1063,9 @@ document.addEventListener('click', function (e) {
   var el = e.target.closest('[data-act]'); if (!el) { if (S.menu && !e.target.closest('.season')) { S.menu = false; render(); } return; }
   var a = el.getAttribute('data-act'), v = el.getAttribute('data-v');
   var c = S.sel && byKey[S.sel], y = S.season;
+  if (a === 'resend') { L.stage = 'start'; sendCode(); return; }
+  if (a === 'logout') { e.preventDefault(); logout(); return; }
+  if (!S.data) return;
   if (a === 'menu') { S.menu = !S.menu; render(); }
   else if (a === 'season') { S.season = Number(v); S.menu = false; S.sel = null; S.view = 'all'; render(); }
   else if (a === 'newSeason') {
@@ -972,7 +1124,7 @@ document.addEventListener('change', function (e) {
   });
 });
 document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && S.menu) { S.menu = false; render(); } });
-load();
+if (API && !getToken()) renderLogin(); else load();
 </script>
 </body></html>
 `;

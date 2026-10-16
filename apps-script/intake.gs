@@ -156,6 +156,7 @@ function doGet(e) {
 function doPost(e) {
   try {
     const d = JSON.parse(e.postData.contents || '{}');
+    if (d.action) return json_(api_(d)); // админка на сайте
     if (d.website) return json_({ ok: true }); // ловушка для ботов
 
     const form = openForm_();

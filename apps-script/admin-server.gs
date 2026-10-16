@@ -25,10 +25,92 @@ const COLS = {
   confirm: ['column 1', 'номер подтверждения'], result: ['результат'], status: ['статус'], note: ['заметка']
 };
 
+let API_AUTH_ = false; // true, когда запрос пришёл с сайта с действующим ключом входа
+
 function isOwner_() {
   try { return Session.getActiveUser().getEmail().toLowerCase() === OWNER_EMAIL; } catch (e) { return false; }
 }
-function assertOwner_() { if (!isOwner_()) throw new Error('Нет доступа'); }
+function assertOwner_() { if (!API_AUTH_ && !isOwner_()) throw new Error('Нет доступа'); }
+
+/* ---------- Вход в админку на сайте: код на почту владельца ---------- */
+
+const OTP_TTL_SEC = 600;          // код действует 10 минут
+const OTP_MAX_TRIES = 5;          // попыток ввода на один код
+const OTP_MAX_SENDS = 5;          // писем с кодом за 10 минут
+const SESSION_DAYS = 30;
+
+function sha_(s) {
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(s), Utilities.Charset.UTF_8)
+    .map(function (b) { return ('0' + (b & 255).toString(16)).slice(-2); }).join('');
+}
+function maskEmail_(e) { const p = e.split('@'); return p[0].slice(0, 2) + '•••' + p[0].slice(-1) + '@' + p[1]; }
+
+function requestCode_() {
+  const cache = CacheService.getScriptCache();
+  const sent = Number(cache.get('otp_sends') || 0);
+  if (sent >= OTP_MAX_SENDS) return { ok: false, error: 'Слишком много запросов. Попробуйте через 10 минут.' };
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  const salt = Utilities.getUuid();
+  cache.put('otp', JSON.stringify({ h: sha_(salt + code), s: salt, t: 0 }), OTP_TTL_SEC);
+  cache.put('otp_sends', String(sent + 1), OTP_TTL_SEC);
+  MailApp.sendEmail({
+    to: OWNER_EMAIL,
+    subject: 'Код входа в админку DV Lottery: ' + code,
+    body: 'Код для входа в админку заявок DV Lottery: ' + code + '\n\nКод действует 10 минут. Если вы не запрашивали вход — просто проигнорируйте письмо.',
+    name: 'Beloglazov Green Card'
+  });
+  return { ok: true, email: maskEmail_(OWNER_EMAIL) };
+}
+
+function verifyCode_(code) {
+  const cache = CacheService.getScriptCache();
+  const raw = cache.get('otp');
+  if (!raw) return { ok: false, error: 'Код устарел. Запросите новый.' };
+  const o = JSON.parse(raw);
+  if (o.t >= OTP_MAX_TRIES) { cache.remove('otp'); return { ok: false, error: 'Слишком много попыток. Запросите новый код.' }; }
+  if (sha_(o.s + String(code || '').replace(/\D/g, '')) !== o.h) {
+    o.t++; cache.put('otp', JSON.stringify(o), OTP_TTL_SEC);
+    return { ok: false, error: 'Неверный код. Осталось попыток: ' + (OTP_MAX_TRIES - o.t) };
+  }
+  cache.remove('otp');
+  const token = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty('sess_' + sha_(token), String(Date.now() + SESSION_DAYS * 864e5));
+  cleanupSessions_(props);
+  return { ok: true, token: token };
+}
+
+function checkToken_(token) {
+  if (!token || String(token).length < 40) return false;
+  const exp = Number(PropertiesService.getScriptProperties().getProperty('sess_' + sha_(token)) || 0);
+  return exp > Date.now();
+}
+
+function cleanupSessions_(props) {
+  const all = props.getProperties(), now = Date.now();
+  Object.keys(all).forEach(function (k) { if (k.indexOf('sess_') === 0 && Number(all[k]) < now) props.deleteProperty(k); });
+}
+
+/** API для админки на сайте: { action, token, args }. */
+function api_(d) {
+  try {
+    if (d.action === 'requestCode') return requestCode_();
+    if (d.action === 'verifyCode') return verifyCode_(d.code);
+    if (!checkToken_(d.token)) return { ok: false, auth: false, error: 'Нужно войти' };
+    if (d.action === 'logout') { PropertiesService.getScriptProperties().deleteProperty('sess_' + sha_(d.token)); return { ok: true }; }
+    const fns = { adminData: adminData, adminSaveSub: adminSaveSub, adminAddToSeason: adminAddToSeason,
+      adminSetCurrentSeason: adminSetCurrentSeason, adminAddMember: adminAddMember, adminSetPhoto: adminSetPhoto };
+    const fn = fns[d.action];
+    if (!fn) return { ok: false, error: 'Неизвестное действие' };
+    API_AUTH_ = true;
+    return { ok: true, result: fn.apply(null, Array.isArray(d.args) ? d.args : []) };
+  } catch (err) {
+    return { ok: false, error: String(err && err.message || err) };
+  } finally { API_AUTH_ = false; }
+}
+
+/** Разовый запуск из редактора: даёт скрипту разрешение отправлять письма с кодом. */
+function authorizeMail() { return MailApp.getRemainingDailyQuota(); }
 
 function responsesSheet_() {
   let id = RESPONSES_SHEET_ID;
