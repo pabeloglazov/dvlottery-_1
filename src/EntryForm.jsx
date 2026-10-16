@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ENTRY, FORM_POST_URL, PHOTO_UPLOAD_URL, SEND_EMAIL_ADDRESS, TELEGRAM } from "./config.js";
+import { ENTRY, FORM_POST_URL, INTAKE_URL, TELEGRAM } from "./config.js";
 import { MONTHS, MONTHS_GEN, OPTIONS } from "./content.js";
 
 const EMPTY = {
@@ -10,7 +10,7 @@ const EMPTY = {
 
 const LATIN = /^[A-Za-z][A-Za-z .'\-]*$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-const CAN_UPLOAD = Boolean(PHOTO_UPLOAD_URL);
+const CAN_UPLOAD = Boolean(INTAKE_URL);
 
 // Какие поля на каком шаге
 const STEP_FIELDS = [
@@ -45,27 +45,54 @@ function validate(f, d, t, photo) {
 }
 
 async function prepareImage(file) {
-  // Уменьшаем до 2000 px по большей стороне, чтобы загрузка была быстрой.
+  // Уменьшаем до 1600 px по большей стороне, чтобы загрузка была быстрой.
   const url = URL.createObjectURL(file);
   try {
     const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
-    const k = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
+    const k = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
     const c = document.createElement("canvas");
     c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
     c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-    return c.toDataURL("image/jpeg", 0.92);
+    return c.toDataURL("image/jpeg", 0.9);
   } finally { URL.revokeObjectURL(url); }
 }
 
-async function uploadPhoto(dataUrl, name) {
-  const res = await fetch(PHOTO_UPLOAD_URL, {
+// Отправка через скрипт: фото + ответ в форму одним запросом, с подтверждением.
+async function sendToScript(d, photo) {
+  const res = await fetch(INTAKE_URL, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({ name, mime: "image/jpeg", data: dataUrl.split(",")[1] }),
+    body: JSON.stringify({
+      ...d,
+      birth: { d: d.bd, m: d.bm, y: d.by },
+      photo: photo ? { mime: "image/jpeg", data: photo.split(",")[1] } : null,
+      website: "",
+    }),
   });
   const json = await res.json();
-  if (!json.url) throw new Error(json.error || "upload failed");
-  return json.url;
+  if (!json.ok) throw new Error(json.error || "intake failed");
+  return json;
+}
+
+// Запасной путь: прямой POST в Google Form (ответ непрозрачный, без фото).
+async function sendToForm(d) {
+  const body = new URLSearchParams();
+  body.append(ENTRY.name, d.name.trim().toUpperCase());
+  body.append(ENTRY.sex, d.sex);
+  body.append(ENTRY.birth + "_year", d.by);
+  body.append(ENTRY.birth + "_month", d.bm);
+  body.append(ENTRY.birth + "_day", d.bd);
+  body.append(ENTRY.birthCity, d.birthCity.trim().toUpperCase());
+  body.append(ENTRY.birthCountry, d.birthCountry.trim().toUpperCase());
+  body.append(ENTRY.photo, "Пришлёт фото в Telegram");
+  body.append(ENTRY.address, d.address.trim());
+  body.append(ENTRY.country, d.country.trim().toUpperCase());
+  body.append(ENTRY.email, d.email.trim());
+  body.append(ENTRY.education, d.education);
+  body.append(ENTRY.marital, d.marital);
+  body.append(ENTRY.children, d.children.trim());
+  body.append(ENTRY.telegram, d.telegram.trim());
+  await fetch(FORM_POST_URL, { method: "POST", mode: "no-cors", body });
 }
 
 function Field({ id, label, hint, error, children }) {
@@ -100,6 +127,9 @@ export default function EntryForm({ lang, t }) {
   const [state, setState] = useState("idle");      // idle | sending | done | error
   const [errMsg, setErrMsg] = useState("");
   const [sentPhotoLater, setSentPhotoLater] = useState(false);
+  const [last, setLast] = useState(null);          // что отправили — для подсказок после отправки
+  const [sibling, setSibling] = useState("");      // "" | "yes" | "no"
+  const [copied, setCopied] = useState(false);
   const top = useRef(null);
   const f = t.fields;
 
@@ -141,32 +171,23 @@ export default function EntryForm({ lang, t }) {
 
   const submit = async () => {
     setState("sending"); setErrMsg("");
+    const withPhoto = CAN_UPLOAD && photo && !d.photoLater;
     try {
-      let photoValue = "Пришлёт фото в Telegram";
-      if (CAN_UPLOAD && photo && !d.photoLater) {
-        try { photoValue = await uploadPhoto(photo, d.name.trim().toUpperCase()); }
-        catch { setState("error"); setErrMsg(t.photoError); setStep(1); return; }
+      if (INTAKE_URL) {
+        try {
+          const r = await sendToScript(d, withPhoto ? photo : null);
+          setSentPhotoLater(!r.photo);
+        } catch {
+          // Скрипт недоступен — анкета всё равно уходит в форму, фото клиент пришлёт в Telegram.
+          await sendToForm(d);
+          setSentPhotoLater(true);
+        }
+      } else {
+        await sendToForm(d);
+        setSentPhotoLater(true);
       }
-      const body = new URLSearchParams();
-      body.append(ENTRY.name, d.name.trim().toUpperCase());
-      body.append(ENTRY.sex, d.sex);
-      body.append(ENTRY.birth + "_year", d.by);
-      body.append(ENTRY.birth + "_month", d.bm);
-      body.append(ENTRY.birth + "_day", d.bd);
-      body.append(ENTRY.birthCity, d.birthCity.trim().toUpperCase());
-      body.append(ENTRY.birthCountry, d.birthCountry.trim().toUpperCase());
-      body.append(ENTRY.photo, photoValue);
-      body.append(ENTRY.address, d.address.trim());
-      body.append(ENTRY.country, d.country.trim().toUpperCase());
-      body.append(ENTRY.email, d.email.trim());
-      if (SEND_EMAIL_ADDRESS) body.append("emailAddress", d.email.trim());
-      body.append(ENTRY.education, d.education);
-      body.append(ENTRY.marital, d.marital);
-      body.append(ENTRY.children, d.children.trim());
-      body.append(ENTRY.telegram, d.telegram.trim());
-      // Google Forms не отдаёт CORS-заголовки, поэтому ответ непрозрачный: успехом считаем то, что запрос ушёл.
-      await fetch(FORM_POST_URL, { method: "POST", mode: "no-cors", body });
-      setSentPhotoLater(!(CAN_UPLOAD && photo && !d.photoLater));
+      setLast(d);
+      setSibling(""); setCopied(false);
       setState("done");
       scrollTop();
     } catch {
@@ -174,7 +195,19 @@ export default function EntryForm({ lang, t }) {
     }
   };
 
-  const restart = () => { setD(EMPTY); setPhoto(null); setStep(0); setState("idle"); setErrors({}); scrollTop(); };
+  const restart = (prefill = {}) => { setD({ ...EMPTY, ...prefill }); setPhoto(null); setStep(0); setState("idle"); setErrors({}); scrollTop(); };
+  // Анкета на супруга(у): адрес, страна, Telegram и семейное положение уже заполнены.
+  const restartForSpouse = () => restart({
+    address: last?.address || "", country: last?.country || "", telegram: last?.telegram || "",
+    marital: last?.marital || "", children: last?.children || "",
+    sex: last?.sex === "М" ? "Ж" : last?.sex === "Ж" ? "М" : "",
+  });
+
+  const siteUrl = typeof window !== "undefined" ? window.location.href.split("#")[0] : "";
+  const shareText = t.share.text;
+  const copyLink = async () => {
+    try { await navigator.clipboard.writeText(siteUrl); setCopied(true); } catch { setCopied(false); }
+  };
 
   const label = (list, v) => list.find((o) => o.value === v)?.[lang] || v;
   const review = useMemo(() => [
@@ -194,15 +227,50 @@ export default function EntryForm({ lang, t }) {
   ], [d, photo, lang, t]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (state === "done") {
+    const married = last?.marital === "Женат / замужем";
     return (
-      <div className="form-card done" ref={top} tabIndex={-1}>
-        <div className="done-mark" aria-hidden="true">✓</div>
-        <h3>{t.done.t}</h3>
-        <p>{t.done.d}</p>
-        {sentPhotoLater && <p className="done-photo">{t.done.photo}</p>}
-        <div className="done-actions">
-          <a className="btn btn-primary" href={`https://t.me/${TELEGRAM}`} target="_blank" rel="noopener">{t.done.tg}</a>
-          <button type="button" className="btn btn-ghost" onClick={restart}>{t.done.again}</button>
+      <div className="form-card done-card" ref={top} tabIndex={-1}>
+        <div className="done">
+          <div className="done-mark" aria-hidden="true">✓</div>
+          <h3>{t.done.t}</h3>
+          <p>{t.done.d}</p>
+          {sentPhotoLater && <p className="done-photo">{t.done.photo}</p>}
+          <div className="done-actions">
+            <a className="btn btn-primary" href={`https://t.me/${TELEGRAM}`} target="_blank" rel="noopener">{t.done.tg}</a>
+          </div>
+        </div>
+
+        {married && (
+          <section className="next-card next-spouse">
+            <h4>{t.spouse.title}</h4>
+            <p>{t.spouse.text}</p>
+            <button type="button" className="btn btn-primary" onClick={restartForSpouse}>{t.spouse.cta}</button>
+          </section>
+        )}
+
+        <section className="next-card">
+          <h4>{t.share.q}</h4>
+          {sibling === "" && (
+            <div className="yesno">
+              <button type="button" className="btn btn-ghost" onClick={() => setSibling("yes")}>{t.share.yes}</button>
+              <button type="button" className="btn btn-ghost" onClick={() => setSibling("no")}>{t.share.no}</button>
+            </div>
+          )}
+          {sibling === "yes" && (
+            <>
+              <p>{t.share.text2}</p>
+              <div className="share-row">
+                <a className="btn btn-ghost" href={`https://t.me/share/url?url=${encodeURIComponent(siteUrl)}&text=${encodeURIComponent(shareText)}`} target="_blank" rel="noopener">Telegram</a>
+                <a className="btn btn-ghost" href={`https://wa.me/?text=${encodeURIComponent(shareText + " " + siteUrl)}`} target="_blank" rel="noopener">WhatsApp</a>
+                <button type="button" className="btn btn-ghost" onClick={copyLink}>{copied ? t.share.copied : t.share.copy}</button>
+              </div>
+            </>
+          )}
+          {sibling === "no" && <p className="muted">{t.share.other}</p>}
+        </section>
+
+        <div className="done-more">
+          <button type="button" className="link" onClick={() => restart()}>{t.done.again}</button>
         </div>
       </div>
     );
@@ -298,6 +366,7 @@ export default function EntryForm({ lang, t }) {
             </Field>
             <Field id="marital" label={f.marital.l} error={errors.marital}>
               <Choice name="marital" options={OPTIONS.marital} value={d.marital} onChange={set("marital")} lang={lang} columns={2} />
+              {d.marital === "Женат / замужем" && <p className="note">{t.spouse.hint}</p>}
             </Field>
             <Field id="children" label={f.children.l} hint={f.children.h} error={errors.children}>
               <textarea id="children" rows={2} value={d.children} onChange={set("children")} placeholder={f.children.p} />

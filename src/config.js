@@ -9,7 +9,7 @@ export const ENTRY = {
   birth: "entry.320684059",          // дата: _year / _month / _day
   birthCity: "entry.631570402",
   birthCountry: "entry.701730261",
-  photo: "entry.1865791328",         // в форме: ссылка на фото (текстовый вопрос)
+  photo: "entry.707002869",          // «Фотография»: ссылка на фото в Google Диске
   address: "entry.753521122",
   country: "entry.1965056974",
   email: "entry.1861919795",
@@ -19,11 +19,9 @@ export const ENTRY = {
   telegram: "entry.775143985",
 };
 
-// Если в форме включён сбор email «по ответу респондента», передаём его отдельно.
-export const SEND_EMAIL_ADDRESS = true;
-
-// Веб-приложение Google Apps Script, которое сохраняет фото в Google Drive
-// и возвращает ссылку. Пусто — фото не загружается, клиент отправляет его в Telegram.
-export const PHOTO_UPLOAD_URL = "";
+// Веб-приложение Google Apps Script (apps-script/Code.gs): сохраняет фото
+// в Google Диск и записывает ответ в форму. Пусто — анкета уходит напрямую
+// в форму, а фото клиент присылает в Telegram.
+export const INTAKE_URL = "https://script.google.com/macros/s/AKfycbyP97pqQquagl_uw_c40G2gRXsAsREoSKClzGZ4jB5ogkDe0pFtFWEKDeAGBlBxq5w5Xg/exec";
 
 export const TELEGRAM = "pabeloglazov";
