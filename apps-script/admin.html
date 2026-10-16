@@ -26,17 +26,23 @@ a{color:var(--green)}
 .nav-toggle{width:28px;height:28px;display:grid;place-items:center;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:#b8c1d6;cursor:pointer;flex:none}
 .nav-toggle:hover{color:#fff;background:rgba(255,255,255,.1)}
 .nav-item .lab{display:flex;align-items:center}
-.nav-item .ic{display:none}
+.nav-item .ic,.nav-item .sh{display:none}
 .nav{transition:flex-basis .18s ease}
 .nav.min{flex-basis:72px;padding:18px 10px}
-.nav.min .lbl,.nav.min .nav-label,.nav.min .season-btn small,.nav.min .season-btn svg,.nav.min .nav-foot a{display:none}
+.nav.min .lbl,.nav.min .nav-label,.nav.min .season-btn svg,.nav.min .nav-foot a{display:none}
 .nav.min .brand{flex-direction:column;gap:10px;padding:0}
 .nav.min .season-btn{justify-content:center;padding:8px 0}.nav.min .season-btn b{font-size:13px}
 .nav.min .menu{right:auto;width:230px}
-.nav.min .nav-item{flex-direction:column;justify-content:center;gap:3px;padding:8px 0}
-.nav.min .nav-item .dot{margin:0}
-.nav.min .nav-item .ic{display:block;font-size:13px;line-height:1;color:#b8c1d6}
-.nav.min .nav-item .n{font-size:12.5px}
+.nav.min .nav-item{flex-direction:column;justify-content:center;gap:1px;padding:7px 0 6px;position:relative}
+.nav.min .nav-item .lab{display:none}
+.nav.min .nav-item .n{font-size:16px;font-weight:700;color:#fff}
+.nav.min .nav-item .badge{font-size:13px;padding:1px 8px}
+.nav.min .nav-item .sh{display:block;font-size:10.5px;color:#8f9ab3;letter-spacing:.01em}
+.nav.min .nav-item.on .sh{color:#dfe4ef}
+.nav.min .nav-item[data-v="Новая"]::before,.nav.min .nav-item[data-v="Связался"]::before,.nav.min .nav-item[data-v="Оплачено"]::before,.nav.min .nav-item[data-v="Подано"]::before{content:"";position:absolute;left:6px;top:50%;width:3px;height:22px;margin-top:-11px;border-radius:3px;background:var(--c)}
+.nav.min .nav-item[data-v="Новая"]{--c:#e2a33a}.nav.min .nav-item[data-v="Связался"]{--c:#7f9bd6}.nav.min .nav-item[data-v="Оплачено"]{--c:#5fa77f}.nav.min .nav-item[data-v="Подано"]{--c:#c9d0de}
+.nav.min .nav-list{gap:4px}
+.nav.min .season-btn small{display:block;text-align:center;font-size:10px}
 .nav-label{font-size:12px;color:#8f9ab3;padding:0 10px 4px}
 .nav-list{display:flex;flex-direction:column;gap:2px}
 .nav-item{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;padding:8px 10px;border:0;border-radius:9px;background:transparent;color:#dfe4ef;font-size:14.5px;text-align:left}
@@ -152,6 +158,7 @@ h1{margin:2px 0 0;font-size:30px;font-weight:800;letter-spacing:-.02em;line-heig
   .nav-top .season{flex:1}
   .nav-label,.nav-foot,.nav-toggle{display:none}
   .nav.min{padding:12px}.nav.min .lbl,.nav.min .season-btn small{display:inline}
+  .nav.min .nav-item .sh{display:none}.nav.min .nav-item .lab{display:flex}.nav.min .nav-item::before{display:none}.nav.min .nav-item .n{font-size:14px;font-weight:500;color:#b8c1d6}
   .nav.min .nav-item{flex-direction:row;padding:8px 10px}.nav.min .nav-item .ic,.nav.min .season-btn small{display:none}.nav.min .brand{flex-direction:row}.nav.min .season-btn svg{display:block}.nav.min .season-btn{justify-content:space-between;padding:9px 12px}.nav.min .nav-item .dot{display:none}
   .nav-list{flex-direction:row;overflow-x:auto;gap:6px;scrollbar-width:none}
   .nav-list::-webkit-scrollbar{display:none}
@@ -394,8 +401,9 @@ function renderNav(y) {
   var seasons = {}; seasons[S.data.current] = 1;
   S.data.clients.forEach(function (c) { seasonsOf(c).forEach(function (s) { seasons[s] = 1; }); });
   var years = Object.keys(seasons).map(Number).sort(function (a, b) { return b - a; });
+  var SHORT = { all: 'все', 'Новая': 'новые', 'Связался': 'связ.', 'Оплачено': 'оплач.', 'Подано': 'подано', invite: 'пригл.', won: 'выигр.', everyone: 'клиенты' };
   var item = function (key, label, n, extra) {
-    return '<button class="nav-item' + (S.view === key ? ' on' : '') + '" data-act="view" data-v="' + key + '" title="' + esc(label) + '"><span class="lab">' + (extra || '') + '<span class="lbl">' + esc(label) + '</span></span>' + n + '</button>';
+    return '<button class="nav-item' + (S.view === key ? ' on' : '') + '" data-act="view" data-v="' + key + '" title="' + esc(label) + '"><span class="lab">' + (extra || '') + '<span class="lbl">' + esc(label) + '</span></span>' + n + '<span class="sh">' + SHORT[key] + '</span></button>';
   };
   var inv = inviteList(S.data.current).length;
   var h = '<nav class="nav' + (S.navMin ? ' min' : '') + '" aria-label="Разделы"><div class="nav-top"><div class="brand"><span class="mark">GC</span><span class="lbl">Green Card</span><button class="nav-toggle" data-act="navMin" title="' + (S.navMin ? 'Развернуть панель' : 'Свернуть панель') + '" aria-label="' + (S.navMin ? 'Развернуть панель' : 'Свернуть панель') + '"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + (S.navMin ? 'M6 4l4 4-4 4' : 'M10 4L6 8l4 4') + '"/></svg></button></div>' +
