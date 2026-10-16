@@ -69,7 +69,7 @@ export const T = {
     why: {
       title: "Почему со мной спокойнее",
       items: [
-        "Лицензированный иммиграционный консультант в США, больше 2 лет работаю под руководством иммиграционного адвоката.",
+        "4 года опыта в подаче заявок на DV Lottery. Работаю вместе с иммиграционным адвокатом.",
         "Среди моих клиентов есть выигравшие. Но гарантий не даёт никто: это лотерея.",
         "Проверяю данные и дубликаты. Одна ошибка в заявке — и её дисквалифицируют.",
         "Остаюсь на связи до проверки результата.",
@@ -174,7 +174,7 @@ export const T = {
     why: {
       title: "Why work with me",
       items: [
-        "Licensed immigration consultant in the U.S., 2+ years working under an immigration attorney.",
+        "4 years of experience submitting DV Lottery entries. I work alongside an immigration attorney.",
         "Some of my clients have been selected. Nobody can guarantee a win: it's a lottery.",
         "I check data and duplicates. One mistake gets an entry disqualified.",
         "I stay in touch until you check your result.",
@@ -243,4 +243,4 @@ export const MONTHS_GEN = {
   en: MONTHS.en,
 };
 
-export const PRICES = { ru: "₽2000", us: "$100" };
+export const PRICES = { ru: "₽5000", us: "$50" };
