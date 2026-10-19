@@ -177,7 +177,7 @@ export default function App() {
               <p className="who-lead">{t.who.lead}</p>
               <ul className="who-list">
                 {t.who.items.map((x) => (
-                  <li key={x.t}><span className="who-ck" aria-hidden="true">✓</span><div><h3>{x.t}</h3><p>{x.d}</p></div></li>
+                  <li key={x.t}><span className="who-ck" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 8.5l3 3 6-7" /></svg></span><div><h3>{x.t}</h3><p>{x.d}</p></div></li>
                 ))}
               </ul>
             </div>

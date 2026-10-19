@@ -474,7 +474,8 @@ button.ai-pic { cursor: zoom-in; }
 .who-list li, .docs-list li { display: flex; gap: 16px; align-items: flex-start; }
 .who-list h3, .docs-list h3 { font-size: 19px; line-height: 1.25; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .who-list p, .docs-list p { margin-top: 4px; color: var(--ink-2); font-size: 15.5px; }
-.who-ck { flex: none; width: 36px; height: 36px; border-radius: 50%; background: var(--green); color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 17px; }
+.who-ck { flex: none; width: 36px; height: 36px; border-radius: 50%; background: var(--green); color: #fff; display: grid; place-items: center; }
+.who-ck svg { width: 18px; height: 18px; display: block; }
 .doc-ic { flex: none; width: 44px; height: 44px; border-radius: 12px; background: var(--green-tint); color: var(--green-ink); display: grid; place-items: center; }
 .doc-ic svg { width: 22px; height: 22px; }
 .doc-new { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #fff; background: #b5323b; border-radius: 6px; padding: 2px 8px; }

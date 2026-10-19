@@ -73,7 +73,7 @@ export const T = {
       docsLead: "Всё загружается прямо в анкете",
       docs: [
         { i: "pass", t: "Загранпаспорт", d: "Действующий: номер, срок и скан страницы с фото.", isNew: true },
-        { i: "photo", t: "Фото", d: "Снимок на телефон — ИИ поставит белый фон и подгонит под формат." },
+        { i: "photo", t: "Фото", d: "Свежее, за последние 6 месяцев: цветное, анфас, светлый фон, без очков и головного убора." },
         { i: "birth", t: "Данные о рождении", d: "Дата, город и страна — как в паспорте." },
         { i: "home", t: "Адрес и email", d: "Текущий адрес и почта, к которой есть доступ." },
         { i: "edu", t: "Образование", d: "Школа, колледж или университет." },
@@ -272,7 +272,7 @@ export const T = {
       docsLead: "Everything is uploaded right in the form",
       docs: [
         { i: "pass", t: "Passport", d: "Valid: number, expiry date and a scan of the photo page.", isNew: true },
-        { i: "photo", t: "Photo", d: "A phone photo — AI makes the background white and fits the format." },
+        { i: "photo", t: "Photo", d: "Taken in the last 6 months: in color, straight on, light background, no glasses or headwear." },
         { i: "birth", t: "Birth details", d: "Date, city and country — as in the passport." },
         { i: "home", t: "Address and email", d: "Current address and an email you can access." },
         { i: "edu", t: "Education", d: "High school, college or university." },
