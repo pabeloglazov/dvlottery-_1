@@ -113,6 +113,14 @@ img { max-width: 100%; display: block; }
 .steps h3 { margin-top: 18px; font-size: 19px; }
 .steps p { margin-top: 8px; color: var(--ink-2); font-size: 15.5px; }
 
+/* Паспорт */
+.passport-block { margin-top: 8px; }
+.passport-block .check { margin: 4px 0 6px; }
+.scan-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.scan-box { margin-top: 10px; }
+.scan-box .pbox { width: 100% !important; max-width: 220px; height: 140px !important; }
+.scan-box .pbox img { object-fit: contain; background: #fff; }
+
 /* Что даёт грин-карта */
 .benefits-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; }
 .benefits-lead { margin-top: 8px; color: var(--ink-2); font-size: 18px; }
@@ -178,7 +186,8 @@ img { max-width: 100%; display: block; }
 .has-error input, .has-error textarea, .has-error select { border-color: var(--stamp) !important; }
 .field-error { margin-top: 6px; color: var(--stamp); font-size: 14px; font-weight: 500; }
 .date-row { display: grid; grid-template-columns: 1fr 2fr 1.3fr; gap: 10px; }
-.date-row select { margin-top: 8px; }
+.date-row select { margin-top: 8px; min-width: 0; padding-left: 10px; padding-right: 26px; }
+.date-row { grid-template-columns: minmax(64px, 1fr) minmax(0, 2fr) minmax(84px, 1.3fr); }
 
 .choices { display: grid; gap: 8px; margin-top: 8px; }
 .choices-2 { grid-template-columns: 1fr 1fr; }
@@ -280,6 +289,7 @@ img { max-width: 100%; display: block; }
   .lang { margin-left: auto; }
   .hero { padding: 40px 0 44px; }
   .benefits-grid { grid-template-columns: 1fr; }
+  .scan-row { grid-template-columns: 1fr; }
   .benefits-grid li, .benefits-grid li:nth-child(n+4) { grid-column: auto; min-height: 0; }
   .benefits-flag { width: 84px; }
   .hero-art { padding: 26px 0 0 18px; }

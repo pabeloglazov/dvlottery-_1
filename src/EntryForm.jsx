@@ -9,7 +9,11 @@ const EMPTY = {
   name: "", sex: "", bd: "", bm: "", by: "", birthCity: "", birthCountry: "",
   photoLater: false, address: "", country: "", email: "", telegram: "",
   education: "", marital: "", hasKids: "", spouse: emptyPerson(), kids: [],
+  passportNone: false, pnum: "", pcountry: "", pd: "", pm: "", py: "", scan1: null, scan2: null, scanLater: false,
 };
+
+// Паспорт должен действовать на момент подачи (регистрация DV-2027 — ноябрь 2026).
+const PASSPORT_MIN = new Date(2026, 11, 1);
 
 const LATIN = /^[A-Za-z][A-Za-z .'\-]*$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -17,7 +21,7 @@ const CAN_UPLOAD = Boolean(INTAKE_URL);
 
 const STEP_FIELDS = [
   ["name", "sex", "birth", "birthCity", "birthCountry"],
-  ["photo"],
+  ["photo", "passport"],
   ["address", "country", "email", "telegram"],
   ["education", "marital", "family"],
   [],
@@ -59,6 +63,18 @@ function validate(f, d, t, photo) {
       if (!validDate(d.bd, d.bm, d.by)) e.birth = t.date; break;
     case "photo":
       if (CAN_UPLOAD && !photo && !d.photoLater) e.photo = t.required; break;
+    case "passport": {
+      if (d.passportNone) break;
+      const P = t.fields.passport;
+      const num = d.pnum.replace(/\s+/g, "").toUpperCase();
+      if (!num) e.pnum = t.required; else if (!/^[A-Z0-9]{5,20}$/.test(num)) e.pnum = P.bad;
+      if (!d.pcountry.trim()) e.pcountry = t.required; else if (!LATIN.test(d.pcountry.trim())) e.pcountry = t.latin;
+      const exp = new Date(+d.py, +d.pm - 1, +d.pd);
+      if (!(d.pd && d.pm && d.py) || exp.getDate() !== +d.pd) e.pexp = P.expiryReq;
+      else if (exp < PASSPORT_MIN) e.pexp = P.expired;
+      if (CAN_UPLOAD && !d.scan1 && !d.scanLater) e.scan1 = t.required;
+      break;
+    }
     case "email":
       req(f); if (!e[f] && !EMAIL.test(d.email.trim())) e[f] = t.email; break;
     case "family":
@@ -87,6 +103,25 @@ async function prepareImage(file) {
   } finally { URL.revokeObjectURL(url); }
 }
 
+// Скан документа: крупнее, чем фото, чтобы читались все данные.
+async function prepareDoc(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    const k = Math.min(1, 2200 / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement("canvas");
+    c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL("image/jpeg", 0.85);
+  } finally { URL.revokeObjectURL(url); }
+}
+
+const passportPayload = (d) => (d.passportNone ? { none: true } : {
+  number: d.pnum.replace(/\s+/g, "").toUpperCase(), country: d.pcountry.trim().toUpperCase(),
+  expiry: { d: d.pd, m: d.pm, y: d.py },
+  scans: CAN_UPLOAD && !d.scanLater ? [d.scan1, d.scan2].filter(Boolean).map((x) => ({ mime: "image/jpeg", data: x.split(",")[1] })) : [],
+});
+
 const photoPayload = (dataUrl) => (dataUrl ? { mime: "image/jpeg", data: dataUrl.split(",")[1] } : null);
 const personPayload = (p) => ({
   name: p.name.trim().toUpperCase(), sex: p.sex, birth: { d: p.bd, m: p.bm, y: p.by },
@@ -111,6 +146,7 @@ async function sendToScript(d, photo) {
       photo: photoPayload(photo),
       spouse: married ? personPayload(d.spouse) : null,
       kids: d.hasKids === "yes" ? d.kids.map(personPayload) : [],
+      passport: passportPayload(d),
       website: "",
     }),
   });
@@ -125,6 +161,7 @@ async function sendToForm(d) {
     childrenText(d),
     d.marital === MARRIED ? "Супруг(а): " + personLine(d.spouse) : "",
     ...(d.hasKids === "yes" ? d.kids.map((k, i) => `Ребёнок ${i + 1}: ` + personLine(k)) : []),
+    d.passportNone ? "Загранпаспорт: НЕТ" : `Загранпаспорт: ${d.pnum.replace(/\s+/g, "").toUpperCase()}, ${d.pcountry.trim().toUpperCase()}, до ${pad(d.pd)}.${pad(d.pm)}.${d.py} (скан пришлёт в Telegram)`,
   ].filter(Boolean).join(" | ");
   const body = new URLSearchParams();
   body.append(ENTRY.name, d.name.trim().toUpperCase());
@@ -171,29 +208,31 @@ function Choice({ name, options, value, onChange, lang, columns }) {
 
 const daysIn = (m, y) => (m ? new Date(+y || 2000, +m, 0).getDate() : 31);
 
-function DateInput({ id, p, onChange, lang, f }) {
+function DateInput({ id, p, onChange, lang, f, keys = ["bd", "bm", "by"], future = false }) {
+  const [kd, km, ky] = keys;
   const now = new Date().getFullYear();
   const years = [];
-  for (let y = now; y >= now - 100; y--) years.push(y);
-  const days = Array.from({ length: daysIn(p.bm, p.by) }, (_, i) => i + 1);
+  if (future) for (let y = now; y <= now + 15; y++) years.push(y);
+  else for (let y = now; y >= now - 100; y--) years.push(y);
+  const days = Array.from({ length: daysIn(p[km], p[ky]) }, (_, i) => i + 1);
   // Если выбранного дня нет в новом месяце (31 апреля, 29 февраля не в високосный) — сбрасываем день.
   const change = (k) => (e) => {
     const v = e.target.value;
     onChange(k, v);
-    const m = k === "bm" ? v : p.bm, y = k === "by" ? v : p.by;
-    if (k !== "bd" && p.bd && +p.bd > daysIn(m, y)) onChange("bd", "");
+    const m = k === km ? v : p[km], y = k === ky ? v : p[ky];
+    if (k !== kd && p[kd] && +p[kd] > daysIn(m, y)) onChange(kd, "");
   };
   return (
     <div className="date-row">
-      <select id={id} aria-label={f.birth.d} value={p.bd} onChange={change("bd")}>
+      <select id={id} aria-label={f.birth.d} value={p[kd]} onChange={change(kd)}>
         <option value="">{f.birth.d}</option>
         {days.map((d) => <option key={d} value={String(d)}>{d}</option>)}
       </select>
-      <select aria-label={f.birth.m} value={p.bm} onChange={change("bm")}>
+      <select aria-label={f.birth.m} value={p[km]} onChange={change(km)}>
         <option value="">{f.birth.m}</option>
         {MONTHS[lang].map((m, i) => <option key={m} value={String(i + 1)}>{m}</option>)}
       </select>
-      <select aria-label={f.birth.y} value={p.by} onChange={change("by")}>
+      <select aria-label={f.birth.y} value={p[ky]} onChange={change(ky)}>
         <option value="">{f.birth.y}</option>
         {years.map((y) => <option key={y} value={String(y)}>{y}</option>)}
       </select>
@@ -285,6 +324,7 @@ export default function EntryForm({ lang, t }) {
   const [lastPhoto, setLastPhoto] = useState(null);
   const [sibling, setSibling] = useState("");      // "" | "yes" | "no"
   const [copied, setCopied] = useState(false);
+  const [passportNote, setPassportNote] = useState("");
   const top = useRef(null);
   const f = t.fields, fm = t.family;
 
@@ -292,7 +332,7 @@ export default function EntryForm({ lang, t }) {
   const set = (k) => (v) => {
     const val = typeof v === "object" && v?.target ? v.target.value : v;
     setD((p) => ({ ...p, [k]: val }));
-    clearErr(k, ...(["bd", "bm", "by"].includes(k) ? ["birth"] : []));
+    clearErr(k, ...(["bd", "bm", "by"].includes(k) ? ["birth"] : []), ...(["pd", "pm", "py"].includes(k) ? ["pexp"] : []));
   };
   const upper = (k) => (e) => set(k)(e.target.value.toUpperCase());
 
@@ -328,7 +368,11 @@ export default function EntryForm({ lang, t }) {
     return true;
   };
 
-  const next = () => { if (checkStep(step)) { setStep(step + 1); scrollTop(); } };
+  const next = () => {
+    if (!checkStep(step)) return;
+    if (step === 0 && !d.pcountry) setD((p) => ({ ...p, pcountry: p.birthCountry.trim().toUpperCase() }));
+    setStep(step + 1); scrollTop();
+  };
   const back = () => { setErrors({}); setStep(step - 1); scrollTop(); };
 
   const onPhotoFile = async (file) => {
@@ -338,6 +382,12 @@ export default function EntryForm({ lang, t }) {
       setD((p) => ({ ...p, photoLater: false }));
       setErrors({});
     } catch { setErrors({ photo: t.photoType }); }
+  };
+
+  const onScan = (k) => async (file) => {
+    if (!/^image\//.test(file.type) && !/\.(heic|heif)$/i.test(file.name)) { setErrors((e) => ({ ...e, [k]: t.photoType })); return; }
+    try { const u = await prepareDoc(file); setD((p) => ({ ...p, [k]: u, scanLater: k === "scan1" ? false : p.scanLater })); clearErr(k); }
+    catch { setErrors((e) => ({ ...e, [k]: t.photoType })); }
   };
 
   const submit = async () => {
@@ -358,6 +408,7 @@ export default function EntryForm({ lang, t }) {
       if (married && (!viaScript || !d.spouse.photo)) miss.push(d.spouse.name.trim().toUpperCase());
       kids.forEach((k) => { if (!viaScript || !k.photo) miss.push(k.name.trim().toUpperCase()); });
       setMissingPhotos(miss);
+      setPassportNote(d.passportNone ? "none" : (!viaScript || d.scanLater || !d.scan1) ? "scan" : "");
       setLast(d); setLastPhoto(ownPhoto);
       setSibling(""); setCopied(false);
       setState("done");
@@ -397,6 +448,12 @@ export default function EntryForm({ lang, t }) {
     { s: 0, k: f.birthCity.l, v: d.birthCity.toUpperCase() },
     { s: 0, k: f.birthCountry.l, v: d.birthCountry.toUpperCase() },
     { s: 1, k: f.photo.l, v: photo && !d.photoLater ? "✓" : f.photo.later },
+    ...(d.passportNone ? [{ s: 1, k: f.passport.title, v: f.passport.noneShort }] : [
+      { s: 1, k: f.passport.number, v: d.pnum.replace(/\s+/g, "").toUpperCase() },
+      { s: 1, k: f.passport.country, v: d.pcountry.toUpperCase() },
+      { s: 1, k: f.passport.expiry, v: d.pd && d.pm && d.py ? `${d.pd} ${MONTHS_GEN[lang][+d.pm - 1]} ${d.py}` : "" },
+      { s: 1, k: f.passport.scan, v: d.scan1 && !d.scanLater ? f.passport.scanYes + (d.scan2 ? " (2)" : "") : f.passport.scanNo },
+    ]),
     { s: 2, k: f.address.l, v: d.address },
     { s: 2, k: f.country.l, v: d.country.toUpperCase() },
     { s: 2, k: f.email.l, v: d.email },
@@ -416,6 +473,8 @@ export default function EntryForm({ lang, t }) {
           <h3>{t.done.t}</h3>
           <p>{t.done.d}</p>
           {missingPhotos.length > 0 && <p className="done-photo">{t.done.photo} {missingPhotos.length > 1 ? "(" + missingPhotos.join(", ") + ")" : ""}</p>}
+          {passportNote === "scan" && <p className="done-photo">{t.done.passport}</p>}
+          {passportNote === "none" && <p className="done-photo">{t.done.noPassport}</p>}
           <div className="done-actions">
             <a className="btn btn-primary" href={`https://t.me/${TELEGRAM}`} target="_blank" rel="noopener">{t.done.tg}</a>
           </div>
@@ -511,6 +570,47 @@ export default function EntryForm({ lang, t }) {
                 </div>
               </div>
             </Field>
+
+            <section className="sub-block passport-block">
+              <h4>{f.passport.title}</h4>
+              <p className="sub-hint">{f.passport.h}</p>
+              <label className="check">
+                <input type="checkbox" checked={d.passportNone} onChange={(e) => { set("passportNone")(e.target.checked); setErrors({}); }} />
+                <span>{f.passport.none}</span>
+              </label>
+              {d.passportNone ? <p className="note">{f.passport.noneNote}</p> : (
+                <>
+                  <div className="two-col">
+                    <Field id="pnum" label={f.passport.number} hint={f.passport.numberH} error={errors.pnum}>
+                      <input id="pnum" value={d.pnum} onChange={(e) => set("pnum")(e.target.value.toUpperCase().replace(/\s+/g, ""))} placeholder={f.passport.numberP} autoComplete="off" />
+                    </Field>
+                    <Field id="pcountry" label={f.passport.country} error={errors.pcountry}>
+                      <input id="pcountry" value={d.pcountry} onChange={upper("pcountry")} placeholder={f.passport.countryP} />
+                    </Field>
+                  </div>
+                  <Field id="pd" label={f.passport.expiry} error={errors.pexp}>
+                    <DateInput id="pd" p={d} onChange={(k, v) => set(k)(v)} lang={lang} f={f} keys={["pd", "pm", "py"]} future />
+                  </Field>
+                  {CAN_UPLOAD && (
+                    <div className="scan-row">
+                      {[["scan1", f.passport.scan, f.passport.scanH], ["scan2", f.passport.scan2, f.passport.scan2H]].map(([k, l, h]) => (
+                        <Field key={k} id={k} label={l} hint={h} error={errors[k]}>
+                          <div className="scan-box">
+                            <PhotoBox photo={d[k] && !(k === "scan1" && d.scanLater) ? d[k] : null} onFile={onScan(k)} onRemove={() => set(k)(null)} size={120} t={t} inputId={k} />
+                          </div>
+                        </Field>
+                      ))}
+                    </div>
+                  )}
+                  {CAN_UPLOAD && (
+                    <label className="check">
+                      <input type="checkbox" checked={d.scanLater} onChange={(e) => { set("scanLater")(e.target.checked); clearErr("scan1"); }} />
+                      <span>{f.passport.scanLater}</span>
+                    </label>
+                  )}
+                </>
+              )}
+            </section>
           </div>
         )}
 

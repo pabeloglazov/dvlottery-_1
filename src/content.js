@@ -25,7 +25,7 @@ export const T = {
     hero: {
       kicker: "Лотерея грин-карт DV-2027",
       title: "Подам вашу заявку на грин-карту без ошибок и вовремя",
-      lead: "Вы заполняете анкету здесь за 5 минут. Я готовлю фото по требованиям Госдепартамента, подаю заявку в первые дни регистрации и присылаю вам номер подтверждения.",
+      lead: "Вы заполняете анкету здесь за 5 минут и прикладываете фото и загранпаспорт. Я готовлю фото по требованиям Госдепартамента, подаю заявку в первые дни регистрации и присылаю вам номер подтверждения.",
       cta: "Заполнить анкету",
       secondary: "Написать в Telegram",
       note: "Цена за одного человека. Каждый член семьи старше 21 года заполняет свою анкету.",
@@ -63,7 +63,7 @@ export const T = {
     how: {
       title: "Как это работает",
       steps: [
-        { t: "Анкета", d: "Заполняете анкету на этом сайте и загружаете фото. Данные сразу приходят мне." },
+        { t: "Анкета", d: "Заполняете анкету на этом сайте, загружаете фото и скан загранпаспорта. Данные сразу приходят мне." },
         { t: "Проверка и оплата", d: "Я связываюсь с вами в Telegram, сверяю данные и выставляю счёт." },
         { t: "Фото и подача", d: "Обрабатываю фото по правилам DV и подаю заявку на официальном сайте в первые дни регистрации." },
         { t: "Номер подтверждения", d: "Присылаю номер и рассказываю, где и когда проверить результат." },
@@ -75,7 +75,7 @@ export const T = {
       ru: "Для тех, кто в России",
       us: "Для тех, кто в США",
       includes: ["Проверка анкеты и данных", "Обработка фото по требованиям DV", "Подача на официальном сайте", "Номер подтверждения и помощь с проверкой результата"],
-      fee: "Стоимость — за мою работу по подготовке и подаче. Госдепартамент может взимать регистрационный сбор $1 за заявку — он оплачивается отдельно (подробнее в вопросах ниже).",
+      fee: "Стоимость — за мою работу по подготовке и подаче. Госдепартамент взимает регистрационный сбор $1 за каждую заявку — он оплачивается отдельно при подаче (подробнее в вопросах ниже).",
     },
     why: {
       title: "Почему со мной спокойнее",
@@ -90,7 +90,8 @@ export const T = {
       title: "Частые вопросы",
       items: [
         { q: "Когда открывается регистрация?", a: "По решению суда от 14 октября 2026 года Госдепартамент должен открыть регистрацию DV-2027 не позднее 1 ноября и держать её открытой минимум 30 дней. Анкету можно заполнить уже сейчас: я подам заявку в первые дни." },
-        { q: "Сколько стоит участие?", a: "Моя работа — по тарифу выше, за каждого человека. Кроме того, в сентябре 2025 года Госдепартамент утвердил регистрационный сбор $1 за каждую заявку. Ожидается, что он будет действовать для DV-2027, но порядок оплаты пока официально не объявлен — уточню, как только Госдепартамент опубликует инструкции. Если сбор введут, он оплачивается отдельно от моей услуги. Визовые сборы платят только выигравшие на этапе оформления визы." },
+        { q: "Сколько стоит участие?", a: "Моя работа — по тарифу выше, за каждого человека. Кроме того, с DV-2027 Госдепартамент взимает регистрационный сбор $1 за каждую заявку: он оплачивается онлайн в момент подачи, отдельно от моей услуги, и не возвращается. Визовые сборы платят только выигравшие на этапе оформления визы." },
+        { q: "Какие документы нужны?", a: "С DV-2027 действует новое правило: у основного заявителя должен быть действующий загранпаспорт. В заявке указываются его номер, страна выдачи и срок действия, и прикладывается скан страницы с фото и страницы с подписью. Без загранпаспорта подать заявку нельзя. Кроме паспорта нужны: свежее фото (снятое за последние 6 месяцев), дата и место рождения, адрес, образование (школа или 2 года стажа по квалифицированной профессии), а также данные и фото супруга и детей до 21 года. Всё это собирается в анкете ниже." },
         { q: "Кто может участвовать?", a: "Нужна страна рождения из списка допущенных и среднее образование (школа) либо 2 года опыта по квалифицированной профессии за последние 5 лет. Если сомневаетесь — напишите, проверю." },
         { q: "Подавать на всю семью или на каждого?", a: "Супруги могут подать каждый свою заявку — так шансов больше. Дети до 21 года и супруг указываются в заявке. Родственники старше 21 года заполняют отдельную анкету, оплата за каждого человека." },
         { q: "Какое нужно фото?", a: "Любое чёткое цветное фото лица анфас на светлом фоне, без очков и головного убора, снятое за последние 6 месяцев. Обрезку и подгонку под требования я сделаю сам." },
@@ -98,7 +99,7 @@ export const T = {
         { q: "Как проверить результат?", a: "Только на официальном сайте dvprogram.state.gov в разделе Entrant Status Check, по номеру подтверждения. Письма и звонки «вы выиграли» — мошенники." },
       ],
     },
-    disclaimer: "Я не представляю правительство США и не гарантирую выигрыш. Регистрация в DV Lottery проводится только на официальном сайте dvprogram.state.gov; возможный регистрационный сбор Госдепартамента ($1) в стоимость услуги не входит. Оплата взимается за услугу подготовки и подачи заявки.",
+    disclaimer: "Я не представляю правительство США и не гарантирую выигрыш. Регистрация в DV Lottery проводится только на официальном сайте dvprogram.state.gov; регистрационный сбор Госдепартамента ($1 за заявку) в стоимость услуги не входит. Оплата взимается за услугу подготовки и подачи заявки.",
     form: {
       family: {
         spouseTitle: "Данные супруга(и)",
@@ -140,7 +141,7 @@ export const T = {
       },
       title: "Анкета участника",
       lead: "Заполняйте латиницей, как в загранпаспорте. Если в семье несколько человек старше 21 года — каждый заполняет свою анкету.",
-      steps: ["О вас", "Фото", "Контакты", "Семья", "Проверка"],
+      steps: ["О вас", "Фото и паспорт", "Контакты", "Семья", "Проверка"],
       next: "Дальше",
       back: "Назад",
       submit: "Отправить анкету",
@@ -157,6 +158,7 @@ export const T = {
         birthCity: { l: "Город рождения", h: "Латиницей. Например: CHELYABINSK", p: "CHELYABINSK" },
         birthCountry: { l: "Страна рождения", h: "Латиницей. Если страна сменила название, укажите нынешнее: USSR → RUSSIA, KAZAKHSTAN и т.д.", p: "RUSSIA" },
         photo: { l: "Фотография", h: "Чёткое цветное фото лица анфас на светлом фоне, без очков. Подойдёт снимок на телефон — обработаю сам.", pick: "Выбрать фото", change: "Заменить фото", later: "Пришлю фото в Telegram", drop: "Нажмите или перетащите фото сюда", remove: "Удалить фото", laterNote: "Хорошо, после отправки анкеты пришлите фото в Telegram." },
+        passport: { title: "Загранпаспорт", h: "Новое правило DV-2027: у основного заявителя должен быть действующий загранпаспорт.", number: "Номер загранпаспорта", numberH: "Серия и номер слитно, как в паспорте", numberP: "751234567", country: "Страна выдачи", countryP: "RUSSIA", expiry: "Действует до", scan: "Скан страницы с фото", scanH: "Фото или скан разворота с фотографией — все данные должны читаться.", scan2: "Страница с подписью", scan2H: "Если подпись на другой странице. Не обязательно.", pick: "Загрузить", change: "Заменить", scanLater: "Скан пришлю в Telegram", none: "У меня нет загранпаспорта", noneNote: "Без загранпаспорта подать заявку на DV-2027 нельзя. Отправьте анкету — я свяжусь с вами и подскажу, успеете ли оформить паспорт до конца регистрации.", expired: "Паспорт должен действовать на момент подачи (ноябрь 2026).", expiryReq: "Укажите, до какой даты действует паспорт.", bad: "Только латинские буквы и цифры, без пробелов.", noneShort: "Нет загранпаспорта", scanYes: "скан приложен", scanNo: "скан пришлю в Telegram" },
         address: { l: "Адрес проживания", h: "Улица, дом, квартира, город, индекс", p: "ul. Lenina 10, kv. 5, Moscow, 101000" },
         country: { l: "Страна проживания сейчас", p: "RUSSIA" },
         email: { l: "Email", h: "Действующий — сюда придёт информация по заявке", p: "ivan@gmail.com" },
@@ -167,7 +169,7 @@ export const T = {
       },
       review: "Проверьте данные. После отправки я свяжусь с вами в Telegram.",
       consent: "Отправляя анкету, вы соглашаетесь на обработку ваших данных для подачи заявки DV.",
-      done: { t: "Анкета отправлена", d: "Спасибо! Я свяжусь с вами в Telegram, сверю данные и пришлю реквизиты для оплаты.", photo: "Не забудьте прислать фото в Telegram.", tg: "Написать в Telegram", again: "Заполнить анкету на другого человека" },
+      done: { t: "Анкета отправлена", d: "Спасибо! Я свяжусь с вами в Telegram, сверю данные и пришлю реквизиты для оплаты.", photo: "Не забудьте прислать фото в Telegram.", passport: "Пришлите в Telegram скан загранпаспорта — без него заявку не подать.", noPassport: "Без загранпаспорта подать заявку на DV-2027 нельзя — я свяжусь с вами и подскажу, что делать.", tg: "Написать в Telegram", again: "Заполнить анкету на другого человека" },
       error: "Не получилось отправить анкету. Проверьте интернет и попробуйте ещё раз или напишите мне в Telegram.",
       photoError: "Не удалось загрузить фото. Попробуйте другое фото или выберите «Пришлю фото в Telegram».",
       photoType: "Нужна фотография в формате JPG, PNG или HEIC.",
@@ -179,7 +181,7 @@ export const T = {
     hero: {
       kicker: "DV-2027 Green Card Lottery",
       title: "I'll submit your green card lottery entry correctly and on time",
-      lead: "Fill out the form here in 5 minutes. I prepare your photo to State Department rules, submit your entry in the first days of registration, and send you the confirmation number.",
+      lead: "Fill out the form here in 5 minutes and attach your photo and passport. I prepare your photo to State Department rules, submit your entry in the first days of registration, and send you the confirmation number.",
       cta: "Fill out the form",
       secondary: "Message on Telegram",
       note: "Price is per person. Each family member over 21 fills out their own form.",
@@ -217,7 +219,7 @@ export const T = {
     how: {
       title: "How it works",
       steps: [
-        { t: "Form", d: "Fill out the form on this site and upload a photo. It reaches me right away." },
+        { t: "Form", d: "Fill out the form on this site and upload a photo and a passport scan. It reaches me right away." },
         { t: "Review and payment", d: "I contact you on Telegram, check your data and send the invoice." },
         { t: "Photo and submission", d: "I process your photo to DV rules and submit on the official site in the first days of registration." },
         { t: "Confirmation number", d: "I send you the number and explain where and when to check your result." },
@@ -229,7 +231,7 @@ export const T = {
       ru: "If you're in Russia",
       us: "If you're in the U.S.",
       includes: ["Form and data review", "Photo processing to DV rules", "Submission on the official site", "Confirmation number and help checking results"],
-      fee: "The price covers my preparation and submission work. The State Department may charge a $1 registration fee per entry, paid separately (see the FAQ below).",
+      fee: "The price covers my preparation and submission work. The State Department charges a $1 registration fee per entry, paid separately at submission (see the FAQ below).",
     },
     why: {
       title: "Why work with me",
@@ -244,7 +246,8 @@ export const T = {
       title: "FAQ",
       items: [
         { q: "When does registration open?", a: "Under the October 14, 2026 court order, the State Department must open DV-2027 registration by November 1 and keep it open at least 30 days. You can fill out the form now: I'll submit in the first days." },
-        { q: "How much does entry cost?", a: "My work is priced above, per person. In addition, in September 2025 the State Department adopted a $1 registration fee per entry. It is expected to apply to DV-2027, but how it will be paid hasn't been officially announced yet — I'll confirm once the instructions are published. If the fee applies, it is paid separately from my service. Visa fees are paid only by selectees during visa processing." },
+        { q: "How much does entry cost?", a: "My work is priced above, per person. In addition, starting with DV-2027 the State Department charges a $1 registration fee per entry: it is paid online at submission, separately from my service, and is non-refundable. Visa fees are paid only by selectees during visa processing." },
+        { q: "What documents do I need?", a: "A new rule applies from DV-2027: the principal entrant must have a valid passport. The entry includes its number, issuing country and expiration date, plus a scan of the photo page and the signature page. Without a passport you cannot enter. You also need a recent photo (taken within the last 6 months), date and place of birth, address, education (high school or 2 years of qualifying work experience), and details and photos of your spouse and children under 21. The form below collects all of it." },
         { q: "Who is eligible?", a: "You need an eligible country of birth and either a high-school education or 2 years of qualifying work experience in the past 5 years. Not sure? Message me and I'll check." },
         { q: "One entry per family or per person?", a: "Spouses can each submit their own entry, which doubles the chances. Your spouse and children under 21 are listed in your entry. Relatives over 21 fill out a separate form; the price is per person." },
         { q: "What photo do I need?", a: "Any sharp color photo of your face, straight on, light background, no glasses or headwear, taken within 6 months. I'll crop and adjust it to the rules." },
@@ -252,7 +255,7 @@ export const T = {
         { q: "How do I check my result?", a: "Only at dvprogram.state.gov, Entrant Status Check, with your confirmation number. Emails or calls saying \"you won\" are scams." },
       ],
     },
-    disclaimer: "I do not represent the U.S. government and cannot guarantee selection. DV Lottery registration takes place only at dvprogram.state.gov; the possible $1 State Department registration fee is not included in my price. The fee is for preparing and submitting your entry.",
+    disclaimer: "I do not represent the U.S. government and cannot guarantee selection. DV Lottery registration takes place only at dvprogram.state.gov; the State Department registration fee ($1 per entry) is not included in my price. The fee is for preparing and submitting your entry.",
     form: {
       family: {
         spouseTitle: "Spouse details",
@@ -294,7 +297,7 @@ export const T = {
       },
       title: "Entry form",
       lead: "Use Latin letters, as in your passport. Every family member over 21 fills out their own form.",
-      steps: ["About you", "Photo", "Contacts", "Family", "Review"],
+      steps: ["About you", "Photo & passport", "Contacts", "Family", "Review"],
       next: "Next",
       back: "Back",
       submit: "Send the form",
@@ -311,6 +314,7 @@ export const T = {
         birthCity: { l: "City of birth", h: "In Latin letters. E.g. CHELYABINSK", p: "CHELYABINSK" },
         birthCountry: { l: "Country of birth", h: "If the country changed its name, use the current one: USSR → RUSSIA, KAZAKHSTAN, etc.", p: "RUSSIA" },
         photo: { l: "Photo", h: "A sharp color photo of your face, straight on, light background, no glasses. A phone photo is fine — I'll process it.", pick: "Choose a photo", change: "Replace photo", later: "I'll send the photo on Telegram", drop: "Click or drop a photo here", remove: "Remove photo", laterNote: "OK — after sending the form, send your photo on Telegram." },
+        passport: { title: "Passport", h: "New DV-2027 rule: the principal entrant must have a valid passport.", number: "Passport number", numberH: "As printed in the passport, no spaces", numberP: "751234567", country: "Issuing country", countryP: "RUSSIA", expiry: "Expiration date", scan: "Photo page scan", scanH: "A photo or scan of the page with your photo — all data must be readable.", scan2: "Signature page", scan2H: "If the signature is on another page. Optional.", pick: "Upload", change: "Replace", scanLater: "I'll send the scan on Telegram", none: "I don't have a passport", noneNote: "You can't enter DV-2027 without a passport. Send the form — I'll contact you and tell you whether you can get one before registration closes.", expired: "The passport must be valid at submission (November 2026).", expiryReq: "Enter the passport expiration date.", bad: "Latin letters and digits only, no spaces.", noneShort: "No passport", scanYes: "scan attached", scanNo: "will send the scan on Telegram" },
         address: { l: "Home address", h: "Street, building, apartment, city, ZIP", p: "123 Main St, Apt 4, Sacramento, CA 95814" },
         country: { l: "Country you live in now", p: "USA" },
         email: { l: "Email", h: "An active one — updates on your entry go here", p: "ivan@gmail.com" },
@@ -321,7 +325,7 @@ export const T = {
       },
       review: "Check your details. After you send the form, I'll contact you on Telegram.",
       consent: "By sending the form you agree to the processing of your data for your DV entry.",
-      done: { t: "Form sent", d: "Thank you! I'll contact you on Telegram, check your data and send payment details.", photo: "Don't forget to send your photo on Telegram.", tg: "Message on Telegram", again: "Fill out a form for someone else" },
+      done: { t: "Form sent", d: "Thank you! I'll contact you on Telegram, check your data and send payment details.", photo: "Don't forget to send your photo on Telegram.", passport: "Send your passport scan on Telegram — the entry can't be submitted without it.", noPassport: "You can't enter DV-2027 without a passport — I'll contact you and explain the options.", tg: "Message on Telegram", again: "Fill out a form for someone else" },
       error: "The form didn't send. Check your connection and try again, or message me on Telegram.",
       photoError: "The photo didn't upload. Try another photo or choose \"I'll send the photo on Telegram\".",
       photoType: "Please choose a JPG, PNG or HEIC photo.",

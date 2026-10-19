@@ -22,7 +22,7 @@ const COLS = {
   country: ['страна, в которой вы живете сейчас'], email: ['ваш действующий e-mail адрес'],
   education: ['укажите, какое у вас образование'], marital: ['укажите ваше текущее семейное положение'],
   children: ['есть ли у вас дети?'], telegram: ['ваш telegram для связи'],
-  spouseData: ['данные супруга(и)'], kidsData: ['данные детей'],
+  spouseData: ['данные супруга(и)'], kidsData: ['данные детей'], passport: ['загранпаспорт'], passportScan: ['скан загранпаспорта'],
   confirm: ['column 1', 'номер подтверждения'], result: ['результат'], status: ['статус'], note: ['заметка']
 };
 
@@ -101,7 +101,8 @@ function api_(d) {
     if (d.action === 'logout') { PropertiesService.getScriptProperties().deleteProperty('sess_' + sha_(d.token)); return { ok: true }; }
     const fns = { adminData: adminData, adminSaveSub: adminSaveSub, adminAddToSeason: adminAddToSeason,
       adminSetCurrentSeason: adminSetCurrentSeason, adminAddMember: adminAddMember, adminSetPhoto: adminSetPhoto, adminDeleteClient: adminDeleteClient,
-      adminUpdateField: adminUpdateField, adminUpdateMember: adminUpdateMember, adminRemoveMember: adminRemoveMember, adminRemoveFromSeason: adminRemoveFromSeason };
+      adminUpdateField: adminUpdateField, adminUpdateMember: adminUpdateMember, adminRemoveMember: adminRemoveMember, adminRemoveFromSeason: adminRemoveFromSeason,
+      adminSetPassport: adminSetPassport, adminAddPassportScan: adminAddPassportScan };
     const fn = fns[d.action];
     if (!fn) return { ok: false, error: 'Неизвестное действие' };
     API_AUTH_ = true;
@@ -192,7 +193,8 @@ function adminData() {
         photo: get(r, 'photoNew') && /^https?:/.test(get(r, 'photoNew')) ? get(r, 'photoNew') : get(r, 'photoOld'),
         address: get(r, 'address'), country: get(r, 'country'), email: get(r, 'email'),
         education: get(r, 'education'), marital: get(r, 'marital'), children: get(r, 'children'),
-        telegram: get(r, 'telegram'), spouseData: get(r, 'spouseData'), kidsData: get(r, 'kidsData')
+        telegram: get(r, 'telegram'), spouseData: get(r, 'spouseData'), kidsData: get(r, 'kidsData'),
+        passport: get(r, 'passport'), passportScan: get(r, 'passportScan')
       });
     }
     cl.rows.push(r + 1);
@@ -417,6 +419,67 @@ function adminRemoveFromSeason(key, name, row, season) {
     if (at) sh.getRange(at, 4, 1, 1).setValue(REMOVED_), sh.getRange(at, 10).setValue(new Date());
     else sh.appendRow(values);
     return true;
+  } finally { lock.releaseLock(); }
+}
+
+// ---------- Загранпаспорт (обязателен с DV-2027) ----------
+function clientRow_(sh, key, rows) {
+  const v = sh.getDataRange().getValues();
+  const c = colIndex_(v[0].map(String));
+  const mine = (rows || []).map(Number).filter(function (r) {
+    return r >= 2 && r <= v.length && keyOf_(String(v[r - 1][c.name] || '').trim(), fmtDate_(v[r - 1][c.birth], 'dd.MM.yyyy')) === key;
+  });
+  if (!mine.length) throw new Error('Клиент не найден — обновите страницу');
+  return { row: Math.max.apply(null, mine), c: c, v: v };
+}
+function passportCols_(sh) {
+  let c = colIndex_(sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0]);
+  if (c.passport === undefined || c.passportScan === undefined) {
+    ensurePassportItems_(openForm_());
+    SpreadsheetApp.flush();
+    c = colIndex_(sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0]);
+  }
+  if (c.passport === undefined || c.passportScan === undefined) throw new Error('Колонки паспорта ещё не появились в таблице — попробуйте через минуту');
+  return c;
+}
+
+/** Паспорт клиента: { number, country, expiry: 'ДД.ММ.ГГГГ' } | { none: true } | { clear: true }. */
+function adminSetPassport(key, rows, p) {
+  assertOwner_();
+  p = p || {};
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const sh = responsesSheet_();
+    const c = passportCols_(sh);
+    const at = clientRow_(sh, key, rows).row;
+    let text = '';
+    if (p.none) text = NO_PASSPORT;
+    else if (!p.clear) {
+      const num = String(p.number || '').replace(/\s+/g, '').toUpperCase();
+      if (!/^[A-Z0-9]{5,20}$/.test(num)) throw new Error('Номер паспорта: только латиница и цифры');
+      const ex = parseDob_(p.expiry);
+      text = passportText_(num, p.country, ex.getDate(), ex.getMonth() + 1, ex.getFullYear());
+    }
+    sh.getRange(at, c.passport + 1).setValue(text);
+    return text;
+  } finally { lock.releaseLock(); }
+}
+
+/** Добавить скан паспорта: файл — в папку с фото, ссылка — в таблицу. */
+function adminAddPassportScan(key, rows, photo) {
+  assertOwner_();
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const sh = responsesSheet_();
+    const c = passportCols_(sh);
+    const at = clientRow_(sh, key, rows).row;
+    const name = String(sh.getRange(at, c.name + 1).getDisplayValue()).toUpperCase();
+    const url = savePhotoFile_(photo, name + ' PASSPORT');
+    const cell = sh.getRange(at, c.passportScan + 1);
+    const before = String(cell.getValue() || '').split('\n').filter(function (x) { return /^https?:/.test(x.trim()); });
+    before.push(url);
+    cell.setValue(before.join('\n'));
+    return before.join('\n');
   } finally { lock.releaseLock(); }
 }
 

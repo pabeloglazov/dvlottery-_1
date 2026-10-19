@@ -37,7 +37,30 @@ const TITLES = {
   telegram: 'Ваш Telegram для связи',
   spouseData: 'Данные супруга(и)',
   kidsData: 'Данные детей',
+  passport: 'Загранпаспорт',
+  passportScan: 'Скан загранпаспорта',
 };
+const NO_PASSPORT = 'НЕТ ЗАГРАНПАСПОРТА';
+
+/** Вопросы для паспорта добавляются в форму сами при первой анкете (колонки появятся в таблице). */
+function ensurePassportItems_(form) {
+  let anchor = findItem_(form, TITLES.kidsData);
+  [['passport', 'Заполняется сайтом: номер, страна выдачи, срок действия — или «НЕТ ЗАГРАНПАСПОРТА».'],
+   ['passportScan', 'Заполняется сайтом: ссылки на сканы страницы с фото и страницы с подписью.']].forEach(function (x) {
+    let item = findItem_(form, TITLES[x[0]]);
+    if (!item) {
+      item = form.addParagraphTextItem().setTitle(TITLES[x[0]]).setHelpText(x[1]).setRequired(false);
+      if (anchor) form.moveItem(item.getIndex(), anchor.getIndex() + 1);
+    }
+    anchor = item;
+  });
+}
+
+function passportText_(number, country, d, m, y) {
+  const pad = function (n) { return ('0' + String(n || '')).slice(-2); };
+  return [String(number || '').replace(/\s+/g, '').toUpperCase().slice(0, 30), String(country || '').trim().toUpperCase().slice(0, 60),
+    'до ' + pad(d) + '.' + pad(m) + '.' + String(y || '').slice(0, 4)].join(', ');
+}
 
 function norm_(s) { return String(s || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
 
@@ -160,6 +183,7 @@ function doPost(e) {
     if (d.website) return json_({ ok: true }); // ловушка для ботов
 
     const form = openForm_();
+    ensurePassportItems_(form);
     const fr = form.createResponse();
     const s = function (k) { return String(d[k] == null ? '' : d[k]).trim().slice(0, 2000); };
 
@@ -195,7 +219,17 @@ function doPost(e) {
       country: s('country').toUpperCase(), email: s('email'), marital: s('marital'),
       children: s('children'), telegram: s('telegram'), education: s('education'),
       spouseData: spouseText, kidsData: kidsText,
+      passport: '', passportScan: '',
     };
+    const pp = d.passport || null;
+    if (pp && pp.none) values.passport = NO_PASSPORT;
+    else if (pp && pp.number) {
+      const ex = pp.expiry || {};
+      values.passport = passportText_(pp.number, pp.country, ex.d, ex.m, ex.y);
+      values.passportScan = (Array.isArray(pp.scans) ? pp.scans.slice(0, 2) : []).map(function (sc, i) {
+        return savePhoto(sc, applicant + ' PASSPORT ' + (i + 1));
+      }).filter(String).join('\n') || 'пришлёт в Telegram';
+    }
 
     Object.keys(TITLES).forEach(function (key) {
       const item = findItem_(form, TITLES[key]);

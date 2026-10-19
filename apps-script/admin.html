@@ -53,6 +53,10 @@ a{color:var(--green)}
 .lb-img img{display:block;max-width:100%;max-height:calc(100vh - 160px);object-fit:contain}
 .lb-fig figcaption{display:flex;align-items:center;justify-content:space-between;gap:12px;color:#fff;flex-wrap:wrap}
 .lb-btns{display:flex;gap:8px}
+.pass-scans{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.scan-th{position:relative;width:120px;height:84px;border-radius:10px;border:1px solid var(--line);background:#f3f5f8;overflow:hidden;padding:0;cursor:zoom-in}
+.scan-th img{width:100%;height:100%;object-fit:cover;display:block}
+.scan-th span{position:absolute;left:6px;bottom:6px;font-size:11px;font-weight:600;background:rgba(255,255,255,.9);border-radius:6px;padding:1px 6px;color:var(--ink2)}
 .nav-label{font-size:12px;color:#8f9ab3;padding:0 10px 4px}
 .nav-list{display:flex;flex-direction:column;gap:2px}
 .nav-item{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;padding:8px 10px;border:0;border-radius:9px;background:transparent;color:#dfe4ef;font-size:14.5px;text-align:left}
@@ -83,7 +87,7 @@ a{color:var(--green)}
 .row-tags{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .tag{font-size:12px;border-radius:6px;padding:1px 7px;background:#f1f3f7;color:var(--ink2)}
 .pill{font-size:12px;font-weight:600;border-radius:6px;padding:1px 8px;white-space:nowrap}
-.p-new{background:#fbf0d9;color:#8a5d0c}.p-contact{background:#e4ebf7;color:#2b4c8c}.p-paid{background:var(--tint);color:var(--greenInk)}.p-done{background:var(--ink);color:#fff}.p-win{background:#ece0fa;color:#5b2d91}.p-lose{background:#f1f3f7;color:var(--ink2)}.p-none{background:#f1f3f7;color:var(--ink3)}
+.p-new{background:#fbf0d9;color:#8a5d0c}.p-contact{background:#e4ebf7;color:#2b4c8c}.p-paid{background:var(--tint);color:var(--greenInk)}.p-done{background:var(--ink);color:#fff}.p-win{background:#ece0fa;color:#5b2d91}.p-lose{background:#f1f3f7;color:var(--ink2)}.p-none{background:#f1f3f7;color:var(--ink3)}.p-nopass{background:#fbe3e4;color:#9b2730}
 .av{position:relative;flex:none;display:grid;place-items:center;width:38px;height:38px;border-radius:50%;font-size:13px;font-weight:700;color:var(--ink);overflow:hidden;background:#dfe8f5}
 .av img,.big-av img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .list-action{padding:10px 16px;border-bottom:1px solid var(--line)}
@@ -318,6 +322,29 @@ function oldKidsNote(c) {
   if (!t || /^(0|нет|no|none|-)$/i.test(t) || /^да,\s*0$/i.test(t)) return '';
   return t;
 }
+var NO_PASS = 'НЕТ ЗАГРАНПАСПОРТА', PASS_MIN = new Date(2026, 11, 1);
+function passInfo(c) {
+  var t = String(c.passport || '').trim();
+  if (t === NO_PASS) return { state: 'none' };
+  if (!/\d/.test(t)) return { state: 'need' };
+  var parts = t.split(',').map(function (x) { return x.trim(); });
+  var ex = (t.match(/до\s*(\d{2}\.\d{2}\.\d{4})/) || [])[1] || '';
+  var m = ex.split('.'), exD = ex ? new Date(+m[2], +m[1] - 1, +m[0]) : null;
+  var scans = String(c.passportScan || '').split('\n').map(function (x) { return x.trim(); }).filter(function (x) { return /^https?:/.test(x); });
+  return { state: exD && exD < PASS_MIN ? 'expiring' : 'ok', number: parts[0] || '', country: parts[1] || '', expiry: ex, scans: scans };
+}
+function passMatters(y) { return Number(y) >= 2027; }
+function needPassList(y) { return passMatters(y) ? inSeason(y).filter(function (c) { var st = passInfo(c).state; return st === 'need' || st === 'expiring'; }) : []; }
+function noPassList(y) { return passMatters(y) ? inSeason(y).filter(function (c) { return passInfo(c).state === 'none'; }) : []; }
+function firstName(c) { var p = String(c.name || '').split(' '); var n = p[1] || p[0] || ''; return n.charAt(0) + n.slice(1).toLowerCase(); }
+function passRequest(c) {
+  return 'Здравствуйте, ' + firstName(c) + '! Готовлю вашу заявку на лотерею грин-карт DV-2027. С этого года Госдепартамент требует действующий загранпаспорт основного заявителя. Пришлите, пожалуйста:\n1) фото страницы с фотографией — все данные должны хорошо читаться;\n2) страницу с подписью, если она на другой странице.\nПаспорт должен действовать на момент подачи (ноябрь 2026). Если загранпаспорта нет — напишите, подскажу варианты.';
+}
+function passPill(c, y) {
+  if (!passMatters(y)) return '';
+  var st = passInfo(c).state;
+  return st === 'need' ? '<span class="pill p-new">паспорт?</span>' : st === 'none' ? '<span class="pill p-nopass">нет паспорта</span>' : st === 'expiring' ? '<span class="pill p-new">паспорт истекает</span>' : '';
+}
 function familySize(c) { return family(c).length + 1; }
 function inSeason(y) { return S.data.clients.filter(function (c) { return sub(c, y); }); }
 function inviteList(y) { return S.data.clients.filter(function (c) { return !sub(c, y) && seasonsOf(c).some(function (s) { return s < y; }) && !won(c); }); }
@@ -416,7 +443,7 @@ function renderNav(y) {
   var seasons = {}; seasons[S.data.current] = 1;
   S.data.clients.forEach(function (c) { seasonsOf(c).forEach(function (s) { seasons[s] = 1; }); });
   var years = Object.keys(seasons).map(Number).sort(function (a, b) { return b - a; });
-  var SHORT = { all: 'все', 'Новая': 'новые', 'Связался': 'связ.', 'Оплачено': 'оплач.', 'Подано': 'подано', invite: 'пригл.', won: 'выигр.', everyone: 'клиенты' };
+  var SHORT = { needPass: 'паспорт?', noPass: 'нет пасп.', all: 'все', 'Новая': 'новые', 'Связался': 'связ.', 'Оплачено': 'оплач.', 'Подано': 'подано', invite: 'пригл.', won: 'выигр.', everyone: 'клиенты' };
   var item = function (key, label, n, extra) {
     return '<button class="nav-item' + (S.view === key ? ' on' : '') + '" data-act="view" data-v="' + key + '" title="' + esc(label) + '"><span class="lab">' + (extra || '') + '<span class="lbl">' + esc(label) + '</span></span>' + n + '<span class="sh">' + SHORT[key] + '</span></button>';
   };
@@ -431,6 +458,7 @@ function renderNav(y) {
   h += '</div></div><div><div class="nav-label">Воронка сезона</div><div class="nav-list">' +
     item('all', 'Все в сезоне', '<span class="n">' + ins.length + '</span>', '<span class="dot" style="background:#fff"></span>') +
     STATUSES.map(function (s) { return item(s, STATUS_NAV[s], '<span class="n">' + counts[s] + '</span>', '<span class="dot" style="background:' + DOT[s] + '"></span>'); }).join('') +
+    (passMatters(y) ? item('needPass', 'Запросить паспорт', needPassList(y).length ? '<span class="badge">' + needPassList(y).length + '</span>' : '<span class="n">0</span>', '<span class="ic">▣</span>') + item('noPass', 'Нет паспорта', '<span class="n">' + noPassList(y).length + '</span>', '<span class="ic">✕</span>') : '') +
     item('invite', 'Пригласить снова', inv ? '<span class="badge">' + inv + '</span>' : '<span class="n">0</span>', '<span class="ic">↻</span>') +
     item('won', 'Выиграли', '<span class="n">' + wonList().length + '</span>', '<span class="ic">★</span>') +
     item('everyone', 'Все клиенты', '<span class="n">' + S.data.clients.length + '</span>', '<span class="ic">☰</span>') +
@@ -444,6 +472,8 @@ function listSource(y) {
   else if (v === 'won') { src = wonList(); title = 'Выиграли'; }
   else if (v === 'everyone') { src = S.data.clients.slice(); title = 'Все клиенты'; }
   else if (v === 'all') { src = inSeason(y); title = 'Все в сезоне'; }
+  else if (v === 'needPass') { src = needPassList(y); title = 'Запросить загранпаспорт'; }
+  else if (v === 'noPass') { src = noPassList(y); title = 'Нет загранпаспорта'; }
   else { src = inSeason(y).filter(function (c) { return stOf(c, y) === v; }); title = STATUS_NAV[v]; }
   var q = norm(S.q).trim();
   if (q) src = src.filter(function (c) {
@@ -468,7 +498,7 @@ function renderList(y, sel) {
     var fs = familySize(c);
     h += '<button class="row' + (sel && sel.key === c.key ? ' on' : '') + '" data-act="open" data-v="' + esc(c.key) + '">' + avatar(c) +
       '<span class="row-main"><span class="row-top"><span class="row-name">' + esc(c.name) + '</span><span class="row-date">' + esc(lastDate(c)) + '</span></span>' +
-      '<span class="row-tags">' + (st ? pill(st) : '<span class="pill p-none">нет в DV-' + y + '</span>') + (fs > 1 ? '<span class="tag">семья · ' + fs + '</span>' : '') + '</span></span></button>';
+      '<span class="row-tags">' + (st ? pill(st) : '<span class="pill p-none">нет в DV-' + y + '</span>') + (s ? passPill(c, y) : '') + (fs > 1 ? '<span class="tag">семья · ' + fs + '</span>' : '') + '</span></span></button>';
   });
   return h + '</div></aside>';
 }
@@ -500,12 +530,52 @@ function renderOverview(y) {
     view: 'Оплачено', meta: function (c) { var fs = familySize(c); return (fs > 1 ? 'семья · ' + fs : 'один') + (sub(c, y).paid ? ' · ' + sub(c, y).paid : ''); },
     html: function (c) { return '<button class="btn sm" data-act="open" data-v="' + esc(c.key) + '">Открыть</button>'; } });
   h += '</div>';
+  if (passMatters(y)) {
+    var np = needPassList(y);
+    h += block('Запросить загранпаспорт', np.length, np, 'У всех в сезоне паспорт есть или отмечено, что его нет.', {
+      view: 'needPass', meta: function (c) { return (passInfo(c).state === 'expiring' ? 'паспорт истекает до подачи · ' : '') + (c.telegram || c.email || ''); },
+      html: function (c) { return '<button class="btn sm" data-act="passCopy" data-v="' + esc(c.key) + '">Скопировать запрос</button><button class="btn sm" data-act="open" data-v="' + esc(c.key) + '">Открыть</button>'; } });
+  }
   h += block('Подавались раньше — пригласить снова', inv.length, inv, 'Все прошлые клиенты уже в этом сезоне.', {
     view: 'invite', meta: function (c) { return seasonsOf(c).map(function (s) { return 'DV-' + s; }).join(', ') + ' · ' + (c.telegram || ''); },
     html: function (c) { return '<button class="btn sm soft" data-act="add" data-y="' + S.data.current + '" data-v="' + esc(c.key) + '">В DV-' + S.data.current + '</button>'; } });
   return h;
 }
 
+function renderPassport(c, y) {
+  var P = passInfo(c), tg = tgUrl(c.telegram);
+  if (!passMatters(y) && P.state === 'need') return '';
+  var pillH = P.state === 'ok' ? '<span class="pill p-paid">есть</span>' : P.state === 'expiring' ? '<span class="pill p-new">истекает до подачи</span>' : P.state === 'none' ? '<span class="pill p-nopass">нет загранпаспорта</span>' : '<span class="pill p-new">нужно запросить</span>';
+  var h = '<section class="card pad pass-card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px"><h2 class="sec-title" style="font-size:18px">Загранпаспорт</h2>' + pillH + '</div>';
+  if (S.pass && S.pass.key === c.key) {
+    var d = S.pass;
+    return h + '<div class="form-box" style="margin-top:0"><div class="grid3" style="gap:10px">' +
+      '<label class="field">Номер<input id="ps-number" data-act="passDraft" data-k="number" value="' + esc(d.number) + '" placeholder="751234567"></label>' +
+      '<label class="field">Страна выдачи<input id="ps-country" data-act="passDraft" data-k="country" value="' + esc(d.country) + '" placeholder="RUSSIA"></label>' +
+      '<label class="field">Действует до<input id="ps-expiry" data-act="passDraft" data-k="expiry" value="' + esc(d.expiry) + '" placeholder="ДД.ММ.ГГГГ" inputmode="numeric"></label></div>' +
+      '<div style="display:flex;gap:8px"><button class="btn pri" data-act="passSave"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Сохраняю…' : 'Сохранить') + '</button><button class="btn" data-act="passCancel">Отмена</button></div></div></section>';
+  }
+  var scanBtn = '<label class="btn sm file">Загрузить скан<input type="file" accept="image/*" data-act="passScan"></label>';
+  if (P.state === 'need') {
+    h += '<p class="muted" style="margin-bottom:12px">С DV-2027 для подачи нужен действующий загранпаспорт основного заявителя: номер, страна выдачи, срок действия и скан страницы с фото.</p>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm pri" data-act="passCopy" data-v="' + esc(c.key) + '">Скопировать запрос</button>' + (tg ? '<a class="btn sm" href="' + esc(tg) + '" target="_blank" rel="noopener">Открыть Telegram</a>' : '') +
+      '<button class="btn sm" data-act="passEdit">Ввести данные</button>' + scanBtn + '<button class="btn sm ghost-danger" data-act="passNone">Нет паспорта</button></div>';
+  } else if (P.state === 'none') {
+    h += '<p class="muted" style="margin-bottom:12px">Клиент сообщил, что загранпаспорта нет. Без него подать на DV-2027 нельзя.</p>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="passEdit">Паспорт появился — ввести</button><button class="btn sm" data-act="passClear">Снять отметку</button></div>';
+  } else {
+    var on = function (k) { return S.copied === k; };
+    h += '<div class="grid3" style="column-gap:24px">' + [['Номер паспорта', P.number], ['Страна выдачи', P.country], ['Действует до', P.expiry]].map(function (f) {
+      return '<div class="frow"><button class="copy' + (on(f[0]) ? ' ok' : '') + '" data-act="copy" data-k="' + esc(f[0]) + '" data-v="' + esc(f[1]) + '"><span style="min-width:0"><span class="k" style="display:block">' + esc(f[0]) + '</span><span class="v">' + esc(f[1] || '—') + '</span></span><span class="c">' + (on(f[0]) ? 'Скопировано' : 'Копировать') + '</span></button></div>';
+    }).join('') + '</div>';
+    if (P.state === 'expiring') h += '<div class="notice amber" style="margin-top:10px"><span>Паспорт истекает раньше подачи (ноябрь 2026) — нужен новый.</span></div>';
+    h += '<div class="pass-scans">' + (P.scans.length ? P.scans.map(function (u, i) {
+      return '<button class="scan-th" data-act="photoView" data-v="' + esc(u) + '" data-n="' + esc(c.name + ' — паспорт, стр. ' + (i + 1)) + '"><img src="' + thumb(u, 300) + '" alt="" referrerpolicy="no-referrer" onerror="this.remove()"><span>скан ' + (i + 1) + '</span></button>';
+    }).join('') : '<span class="pill p-new">скан не загружен</span>') + '</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn sm" data-act="passEdit">' + PEN.replace('aria-hidden', 'width="14" height="14" aria-hidden') + ' Изменить</button>' + scanBtn + (P.scans.length ? '' : '<button class="btn sm" data-act="passCopy" data-v="' + esc(c.key) + '">Скопировать запрос</button>') + '</div>';
+  }
+  return h + '</section>';
+}
 function renderCard(c, y) {
   var s = sub(c, y), idx = s ? STATUSES.indexOf(s.status) : -1, fam = family(c), seasons = seasonsOf(c);
   var tg = tgUrl(c.telegram), t = thumb(c.photo, 400);
@@ -540,6 +610,7 @@ function renderCard(c, y) {
     h += '<div class="notice amber"><span><b>В сезоне DV-' + y + ' заявки нет</b><br><span class="muted" style="color:#6b5420">' + (seasons.length ? 'Подавался: ' + seasons.map(function (x) { return 'DV-' + x; }).join(', ') : '') + '</span></span><button class="btn pri" data-act="add" data-v="' + esc(c.key) + '">Добавить в DV-' + y + '</button></div>';
   }
 
+  h += renderPassport(c, y);
   h += '<div class="grid2"><section class="card pad"><h2 class="sec-title" style="font-size:18px;margin-bottom:8px">История подач</h2>';
   if (!seasons.length) h += '<div class="muted" style="padding:8px 0">Пока нет подач.</div>';
   seasons.forEach(function (x) {
@@ -609,6 +680,7 @@ document.addEventListener('click', function (e) {
   if (!S.data) return;
   if (a === 'photoView') { e.preventDefault(); S.lb = { url: v, name: el.getAttribute('data-n') || '' }; render(); return; }
   if (a === 'lbClose') { if (e.target.closest('.lb-fig') && !e.target.closest('[data-act="lbClose"].btn')) return; S.lb = null; render(); return; }
+  if (a === 'passCopy') { var pc = byKey[v]; if (pc) copyText(passRequest(pc), 'запрос'); return; }
   if (a === 'navMin') { S.navMin = !S.navMin; S.menu = false; try { localStorage.setItem('dv_nav_min', S.navMin ? '1' : ''); } catch (e) {} render(); }
   else if (a === 'menu') { S.menu = !S.menu; render(); }
   else if (a === 'season') { var keep = el.hasAttribute('data-keep'); S.season = Number(v); S.menu = false; if (!keep) S.sel = null; S.view = 'all'; render(); window.scrollTo(0, 0); }
@@ -618,12 +690,28 @@ document.addEventListener('click', function (e) {
     run('adminSetCurrentSeason', [Number(v)], function (n) { S.data.current = n; S.season = n; S.view = 'all'; render(); toast('Текущий сезон: DV-' + n); });
   }
   else if (a === 'view') { S.view = v; S.sel = null; S.fam = null; render(); window.scrollTo(0, 0); }
-  else if (a === 'open') { S.sel = v; S.fam = null; S.del = null; S.unseason = null; S.lb = null; S.edit = null; S.memDel = null; render(); window.scrollTo(0, 0); }
+  else if (a === 'open') { S.pass = null; S.sel = v; S.fam = null; S.del = null; S.unseason = null; S.lb = null; S.edit = null; S.memDel = null; render(); window.scrollTo(0, 0); }
   else if (a === 'close') { S.sel = null; S.fam = null; render(); }
   else if (a === 'add') { var cl = byKey[v]; if (cl) addToSeason([cl], Number(el.getAttribute('data-y')) || y); }
   else if (a === 'inviteAll') { var cy = S.data.current, list = inviteList(cy); if (list.length && confirm('Добавить ' + list.length + ' ' + plural(list.length, 'клиента', 'клиентов', 'клиентов') + ' в DV-' + cy + ' со статусом «Новая»?')) addToSeason(list, cy); }
   else if (a === 'status' && c) setStatus(c, y, v);
   else if (a === 'prev' && c) { var j = STATUSES.indexOf(sub(c, y).status); if (j > 0) setStatus(c, y, STATUSES[j - 1]); }
+  else if (a === 'passEdit' && c) { var pi = passInfo(c); S.pass = { key: c.key, number: pi.number || '', country: pi.country || String(c.birthCountry || '').toUpperCase(), expiry: pi.expiry || '' }; render(); var pn = document.getElementById('ps-number'); if (pn) pn.focus(); }
+  else if (a === 'passCancel') { S.pass = null; render(); }
+  else if (a === 'passSave' && c && S.pass && !S.busy) {
+    var pd = S.pass, num = pd.number.replace(/\s+/g, '').toUpperCase();
+    if (!/^[A-Z0-9]{5,20}$/.test(num)) { toast('Номер: только латиница и цифры'); return; }
+    if (!/^[A-Za-z][A-Za-z .'\-]*$/.test(pd.country.trim())) { toast('Страна латиницей'); return; }
+    if (!/^\d{2}\.\d{2}\.\d{4}$/.test(pd.expiry.trim())) { toast('Срок в формате ДД.ММ.ГГГГ'); return; }
+    S.busy = true; render();
+    run('adminSetPassport', [c.key, c.rows || [c.row], { number: num, country: pd.country.trim().toUpperCase(), expiry: pd.expiry.trim() }],
+      function (text) { S.busy = false; S.pass = null; c.passport = text; render(); toast('Паспорт сохранён'); }, function () { S.busy = false; render(); });
+  }
+  else if ((a === 'passNone' || a === 'passClear') && c && !S.busy) {
+    S.busy = true; render();
+    run('adminSetPassport', [c.key, c.rows || [c.row], a === 'passNone' ? { none: true } : { clear: true }],
+      function (text) { S.busy = false; c.passport = text; render(); toast(a === 'passNone' ? 'Отмечено: нет загранпаспорта' : 'Отметка снята'); }, function () { S.busy = false; render(); });
+  }
   else if (a === 'unseason' && c) { S.unseason = c.key; S.del = null; render(); }
   else if (a === 'unseasonNo') { S.unseason = null; render(); }
   else if (a === 'unseasonYes' && c && !S.busy) {
@@ -647,6 +735,7 @@ document.addEventListener('click', function (e) {
     var lines = [['Фамилия и имя', c.name], ['Пол', c.sex], ['Дата рождения', c.dob], ['Место рождения', [c.birthCity, c.birthCountry].filter(Boolean).join(', ')], ['Страна проживания', c.country], ['Адрес', c.address], ['Email', c.email], ['Telegram', c.telegram], ['Образование', c.education], ['Семейное положение', c.marital]]
       .filter(function (f) { return f[1]; }).map(function (f) { return f[0] + ': ' + f[1]; });
     family(c).forEach(function (m) { lines.push(m.rel + ': ' + [m.name, m.sex, m.dob, m.place].filter(Boolean).join(', ')); });
+    if (c.passport) lines.push('Загранпаспорт: ' + c.passport);
     copyText(lines.join('\n'), 'все данные');
   }
   else if (a === 'fam') { S.fam = { kind: v, name: '', sex: '', dob: '', city: '', country: '', photo: null }; render(); }
@@ -699,6 +788,7 @@ document.addEventListener('input', function (e) {
   var el = e.target;
   if (el.id === 'q') { S.q = el.value; render(); }
   else if (el.id === 'ed-in' && S.edit) S.edit.v = el.value;
+  else if (el.getAttribute('data-act') === 'passDraft' && S.pass) { var pk = el.getAttribute('data-k'), pv = el.value; if (pk !== 'expiry') { pv = pv.toUpperCase(); el.value = pv; } S.pass[pk] = pv; }
   else if (el.getAttribute('data-act') === 'draft' && S.fam) {
     var k = el.getAttribute('data-k'), v = el.value;
     if (k === 'name' || k === 'city' || k === 'country') { v = v.toUpperCase(); el.value = v; }
@@ -709,6 +799,10 @@ document.addEventListener('change', function (e) {
   var el = e.target, a = el.getAttribute('data-act'), c = S.sel && byKey[S.sel];
   if (a === 'draft' && S.fam) S.fam[el.getAttribute('data-k')] = el.value;
   else if (a === 'field' && c) { var p = {}; p[el.getAttribute('data-k')] = el.value.trim(); saveSub(c, S.season, p, 'Сохранено'); }
+  else if (a === 'passScan' && c && el.files[0]) resizeImage(el.files[0], function (u) {
+    toast('Загружаю скан…');
+    run('adminAddPassportScan', [c.key, c.rows || [c.row], { mime: 'image/jpeg', data: u.split(',')[1] }], function (text) { c.passportScan = text; render(); toast('Скан сохранён'); });
+  });
   else if (a === 'memberPhoto' && S.fam && el.files[0]) resizeImage(el.files[0], function (u) { S.fam.photo = u; render(); toast('Фото выбрано'); });
   else if (a === 'photo' && c && el.files[0]) resizeImage(el.files[0], function (u) {
     toast('Загружаю фото…');
