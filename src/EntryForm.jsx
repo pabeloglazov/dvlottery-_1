@@ -363,6 +363,7 @@ export default function EntryForm({ lang, t }) {
   const [scanBusy, setScanBusy] = useState("");    // какой скан сейчас читается (PDF)
   const [ocr, setOcr] = useState({ st: "", v: {} }); // распознавание: "" | busy | ok | fail, v — что заполнил ИИ
   const [scanOver, setScanOver] = useState(false);
+  const [photoOver, setPhotoOver] = useState(false);
   const [missingPhotos, setMissingPhotos] = useState([]);
   const [last, setLast] = useState(null);          // что отправили — для подсказок после отправки
   const [lastPhoto, setLastPhoto] = useState(null);
@@ -622,33 +623,52 @@ export default function EntryForm({ lang, t }) {
 
         {step === 1 && (
           <div className="fields">
-            <Field id="photo" label={f.photo.l} hint={f.photo.h} error={errors.photo || (state === "error" ? errMsg : "")}>
-              <div className="photo-zone">
-                {CAN_UPLOAD
-                  ? <PhotoBox photo={photo && !d.photoLater ? photo : null} onFile={onPhotoFile} onRemove={() => setPhoto(null)} size={160} t={t} inputId="photo" />
-                  : <div className="photo-frame" />}
-                <div className="photo-actions">
-                  {CAN_UPLOAD && (
-                    <label className="btn btn-primary file-btn">
-                      <input type="file" accept="image/*,.heic,.heif" onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ""; if (file) onPhotoFile(file); }} />
-                      {photo && !d.photoLater ? f.photo.change : f.photo.pick}
+            <section className="sub-block photo-block">
+              <div className="blk-head"><span className="blk-n">1</span><h4>{f.photo.l}</h4>{photo && !d.photoLater && <span className="blk-ok">✓ {f.photo.ready}</span>}</div>
+              <p className="sub-hint">{f.photo.h2}</p>
+              <div className="reqs">{f.photo.reqs.map((r) => <span key={r}>{r}</span>)}</div>
+              <div className="scan-slot">
+                {(!CAN_UPLOAD || d.photoLater) ? <p className="note">{f.photo.laterNote}</p>
+                  : photo ? (
+                    <div className="scan-card">
+                      <span className="photo-th"><img src={photo} alt="" /></span>
+                      <span className="scan-meta">
+                        <b className="is-ok">✓ {f.photo.done}</b><span>{f.photo.doneH}</span>
+                        <span className="scan-links">
+                          <label className="link">{f.photo.change}<input type="file" accept="image/*,.heic,.heif" onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ""; if (file) onPhotoFile(file); }} /></label>
+                          <button type="button" className="link" onClick={() => setPhoto(null)}>{f.passport.remove}</button>
+                        </span>
+                      </span>
+                    </div>
+                  ) : (
+                    <label
+                      className={"scan-drop" + (photoOver ? " is-over" : "")}
+                      onDragOver={(e) => { e.preventDefault(); setPhotoOver(true); }}
+                      onDragLeave={() => setPhotoOver(false)}
+                      onDrop={(e) => { e.preventDefault(); setPhotoOver(false); const file = e.dataTransfer.files?.[0]; if (file) onPhotoFile(file); }}
+                    >
+                      <input id="photo" type="file" accept="image/*,.heic,.heif" onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ""; if (file) onPhotoFile(file); }} />
+                      <span className="scan-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" strokeWidth="1.7" /></svg></span>
+                      <span><b>{f.photo.upload}</b><span>{f.photo.uploadH}</span></span>
                     </label>
                   )}
+                {!(photo && !d.photoLater) && (
                   <label className="check">
                     <input type="checkbox" checked={!CAN_UPLOAD || d.photoLater} disabled={!CAN_UPLOAD} onChange={(e) => { set("photoLater")(e.target.checked); setErrors({}); }} />
                     <span>{f.photo.later}</span>
                   </label>
-                  {(!CAN_UPLOAD || d.photoLater) && <p className="field-hint">{f.photo.laterNote}</p>}
-                </div>
+                )}
               </div>
-            </Field>
+              {(errors.photo || (state === "error" && errMsg)) && <p className="field-error" role="alert">{errors.photo || errMsg}</p>}
+            </section>
 
             <section className="sub-block passport-block">
-              <h4>{f.passport.title}</h4>
+              <div className="blk-head"><span className="blk-n">2</span><h4>{f.passport.title}</h4>{!d.passportNone && d.pnum && d.pd && d.pm && d.py && (d.scan1 || d.scanLater || !CAN_UPLOAD) && <span className="blk-ok">✓ {f.photo.ready}</span>}</div>
               <p className="sub-hint">{f.passport.h} {CAN_UPLOAD && !d.passportNone ? f.passport.aiH : ""}</p>
               {d.passportNone ? <p className="note">{f.passport.noneNote}</p> : (
                 <>
-                  {CAN_UPLOAD && !d.scanLater && (
+                  {CAN_UPLOAD && (<div className="scan-slot">
+                  {!d.scanLater && (
                     <Field id="scan1" label="" error={errors.scan1}>
                       {!d.scan1 ? (
                         <label
@@ -665,7 +685,7 @@ export default function EntryForm({ lang, t }) {
                         <div className="scan-card">
                           <span className="scan-thumbs">
                             <span className={"scan-th" + (ocr.st === "busy" ? " is-scan" : "")}><img src={d.scan1} alt="" /></span>
-                            {d.scan2 && <span className="scan-th"><img src={d.scan2} alt="" /><button type="button" className="scan-x" aria-label={f.passport.remove} onClick={() => set("scan2")(null)}>×</button></span>}
+                            {d.scan2 && <span className="scan-th scan-th2"><img src={d.scan2} alt="" /><button type="button" className="scan-x" aria-label={f.passport.remove} onClick={() => set("scan2")(null)}>×</button></span>}
                           </span>
                           <span className="scan-meta">
                             {ocr.st === "busy" ? <><b className="is-ai">{f.passport.ocrBusy}</b><span>{f.passport.ocrBusyH}</span></>
@@ -682,17 +702,19 @@ export default function EntryForm({ lang, t }) {
                       )}
                     </Field>
                   )}
-                  {CAN_UPLOAD && !d.scan1 && (
+                  {d.scanLater && <p className="note">{f.passport.scanLaterNote}</p>}
+                  {!d.scan1 && (
                     <label className="check">
                       <input type="checkbox" checked={d.scanLater} onChange={(e) => { set("scanLater")(e.target.checked); clearErr("scan1"); }} />
                       <span>{f.passport.scanLater}</span>
                     </label>
                   )}
+                  </div>)}
                   <div className="two-col">
                     <Field id="pnum" label={<>{f.passport.number}{aiTag("pnum")}</>} hint={f.passport.numberH} error={errors.pnum}>
                       <input id="pnum" className={aiTag("pnum") ? "is-auto" : ""} value={d.pnum} onChange={(e) => set("pnum")(e.target.value.toUpperCase().replace(/\s+/g, ""))} placeholder={f.passport.numberP} autoComplete="off" />
                     </Field>
-                    <Field id="pcountry" label={<>{f.passport.country}{aiTag("pcountry")}</>} error={errors.pcountry}>
+                    <Field id="pcountry" label={<>{f.passport.country}{aiTag("pcountry")}</>} hint={f.passport.countryH} error={errors.pcountry}>
                       <input id="pcountry" className={aiTag("pcountry") ? "is-auto" : ""} value={d.pcountry} onChange={upper("pcountry")} placeholder={f.passport.countryP} />
                     </Field>
                   </div>
