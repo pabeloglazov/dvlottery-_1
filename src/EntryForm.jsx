@@ -104,15 +104,45 @@ async function prepareImage(file) {
 }
 
 // Скан документа: крупнее, чем фото, чтобы читались все данные.
+const isPdf = (file) => file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+
+async function canvasToDoc(src, w, h) {
+  const k = Math.min(1, 2200 / Math.max(w, h));
+  const c = document.createElement("canvas");
+  c.width = Math.round(w * k); c.height = Math.round(h * k);
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.drawImage(src, 0, 0, c.width, c.height);
+  return c.toDataURL("image/jpeg", 0.85);
+}
+
+// PDF → JPEG прямо в браузере (до 2 страниц): сервер и админка получают обычные картинки.
+async function pdfToDocs(file, max = 2) {
+  const [pdfjs, worker] = await Promise.all([import("pdfjs-dist"), import("pdfjs-dist/build/pdf.worker.min.mjs?url")]);
+  pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+  const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  const out = [];
+  for (let i = 1; i <= Math.min(max, pdf.numPages); i++) {
+    const page = await pdf.getPage(i);
+    const base = page.getViewport({ scale: 1 });
+    const viewport = page.getViewport({ scale: Math.min(4, 2200 / Math.max(base.width, base.height)) });
+    const c = document.createElement("canvas");
+    c.width = Math.round(viewport.width); c.height = Math.round(viewport.height);
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    out.push(await canvasToDoc(c, c.width, c.height));
+  }
+  await pdf.destroy();
+  if (!out.length) throw new Error("empty pdf");
+  return out;
+}
+
 async function prepareDoc(file) {
   const url = URL.createObjectURL(file);
   try {
     const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
-    const k = Math.min(1, 2200 / Math.max(img.naturalWidth, img.naturalHeight));
-    const c = document.createElement("canvas");
-    c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
-    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-    return c.toDataURL("image/jpeg", 0.85);
+    return await canvasToDoc(img, img.naturalWidth, img.naturalHeight);
   } finally { URL.revokeObjectURL(url); }
 }
 
@@ -241,7 +271,7 @@ function DateInput({ id, p, onChange, lang, f, keys = ["bd", "bm", "by"], future
 }
 
 // Поле для фото: клик по полю или перетаскивание файла — выбор, крестик — удалить.
-function PhotoBox({ photo, onFile, onRemove, size, t, inputId }) {
+function PhotoBox({ photo, onFile, onRemove, size, t, inputId, accept = "image/*,.heic,.heif", dropText }) {
   const [over, setOver] = useState(false);
   const pick = (e) => { const file = e.target.files?.[0]; e.target.value = ""; if (file) onFile(file); };
   return (
@@ -252,11 +282,11 @@ function PhotoBox({ photo, onFile, onRemove, size, t, inputId }) {
         onDragLeave={() => setOver(false)}
         onDrop={(e) => { e.preventDefault(); setOver(false); const file = e.dataTransfer.files?.[0]; if (file) onFile(file); }}
       >
-        <input id={inputId} type="file" accept="image/*,.heic,.heif" onChange={pick} />
+        <input id={inputId} type="file" accept={accept} onChange={pick} />
         {photo ? <img src={photo} alt="" /> : (
           <span className="pbox-empty">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V5M7.5 9.5L12 5l4.5 4.5M5 19h14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            {size >= 120 && <span>{t.fields.photo.drop}</span>}
+            {size >= 120 && <span>{dropText || t.fields.photo.drop}</span>}
           </span>
         )}
       </label>
@@ -319,6 +349,7 @@ export default function EntryForm({ lang, t }) {
   const [photo, setPhoto] = useState(null);        // dataURL фото заявителя
   const [state, setState] = useState("idle");      // idle | sending | done | error
   const [errMsg, setErrMsg] = useState("");
+  const [scanBusy, setScanBusy] = useState("");    // какой скан сейчас читается (PDF)
   const [missingPhotos, setMissingPhotos] = useState([]);
   const [last, setLast] = useState(null);          // что отправили — для подсказок после отправки
   const [lastPhoto, setLastPhoto] = useState(null);
@@ -385,9 +416,19 @@ export default function EntryForm({ lang, t }) {
   };
 
   const onScan = (k) => async (file) => {
-    if (!/^image\//.test(file.type) && !/\.(heic|heif)$/i.test(file.name)) { setErrors((e) => ({ ...e, [k]: t.photoType })); return; }
-    try { const u = await prepareDoc(file); setD((p) => ({ ...p, [k]: u, scanLater: k === "scan1" ? false : p.scanLater })); clearErr(k); }
-    catch { setErrors((e) => ({ ...e, [k]: t.photoType })); }
+    const pdf = isPdf(file);
+    if (!pdf && !/^image\//.test(file.type) && !/\.(heic|heif)$/i.test(file.name)) { setErrors((e) => ({ ...e, [k]: t.scanType })); return; }
+    setScanBusy(k);
+    try {
+      const pages = pdf ? await pdfToDocs(file) : [await prepareDoc(file)];
+      setD((p) => {
+        const n = { ...p, [k]: pages[0], scanLater: k === "scan1" ? false : p.scanLater };
+        if (k === "scan1" && pages[1] && !p.scan2) n.scan2 = pages[1];
+        return n;
+      });
+      clearErr(k);
+    } catch { setErrors((e) => ({ ...e, [k]: pdf ? t.scanPdf : t.scanType })); }
+    finally { setScanBusy(""); }
   };
 
   const submit = async () => {
@@ -596,7 +637,7 @@ export default function EntryForm({ lang, t }) {
                       {[["scan1", f.passport.scan, f.passport.scanH], ["scan2", f.passport.scan2, f.passport.scan2H]].map(([k, l, h]) => (
                         <Field key={k} id={k} label={l} hint={h} error={errors[k]}>
                           <div className="scan-box">
-                            <PhotoBox photo={d[k] && !(k === "scan1" && d.scanLater) ? d[k] : null} onFile={onScan(k)} onRemove={() => set(k)(null)} size={120} t={t} inputId={k} />
+                            <PhotoBox photo={d[k] && !(k === "scan1" && d.scanLater) ? d[k] : null} onFile={onScan(k)} onRemove={() => set(k)(null)} size={120} t={t} inputId={k} accept="image/*,.heic,.heif,application/pdf,.pdf" dropText={scanBusy === k ? f.passport.reading : f.passport.drop} />
                           </div>
                         </Field>
                       ))}
