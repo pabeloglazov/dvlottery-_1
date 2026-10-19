@@ -898,6 +898,7 @@ a{color:var(--green)}
 .search input{border:0;outline:none;background:transparent;width:100%;font-size:14.5px;color:var(--ink)}
 .list-body{overflow:auto;flex:1}
 .row{display:flex;gap:12px;width:100%;padding:12px 16px;border:0;border-bottom:1px solid var(--line2);background:#fff;text-align:left;align-items:flex-start}
+a.row,a.nav-item{text-decoration:none;color:inherit}a.nav-item{color:#dfe4ef}
 .row:hover{background:#f8fafc}
 .row.on{background:var(--tint);box-shadow:inset 3px 0 0 var(--green)}
 .row-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
@@ -1033,6 +1034,43 @@ function norm(s) { return String(s || '').toLowerCase(); }
 function initials(n) { var p = String(n || '').split(' '); return ((p[1] || '')[0] || '') + ((p[0] || '')[0] || ''); }
 function hash(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); }
 function avColor(k) { return AVC[hash(k) % AVC.length]; }
+
+/* ---------- адреса: #/dv-2027/oplacheno/ivanov-ivan ---------- */
+var VIEW_SLUG = { all: 'vse', 'Новая': 'novye', 'Связался': 'svyazalsya', 'Оплачено': 'oplacheno', 'Подано': 'podano', needPass: 'zaprosit-pasport', noPass: 'net-pasporta', invite: 'priglasit', won: 'vyigrali', everyone: 'klienty' };
+var VIEW_TITLE = { all: 'Все в сезоне', needPass: 'Запросить паспорт', noPass: 'Нет паспорта', invite: 'Пригласить снова', won: 'Выиграли', everyone: 'Все клиенты' };
+var TRL = { 'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'e','ж':'zh','з':'z','и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya' };
+var slugOf = {}, bySlug = {};
+function slugify(t) { return String(t || '').toLowerCase().replace(/[а-яё]/g, function (ch) { return TRL[ch]; }).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); }
+function buildSlugs() {
+  slugOf = {}; bySlug = {};
+  var cnt = {};
+  S.data.clients.forEach(function (c) { var b = slugify(c.name) || 'klient'; cnt[b] = (cnt[b] || 0) + 1; });
+  S.data.clients.forEach(function (c) {
+    var b = slugify(c.name) || 'klient', sl = cnt[b] > 1 && c.dob ? b + '-' + slugify(c.dob) : b, n = 2, u = sl;
+    while (bySlug[u]) u = sl + '-' + n++;
+    slugOf[c.key] = u; bySlug[u] = c.key;
+  });
+}
+function viewHref(v, y) { return '#/dv-' + (y || S.season) + '/' + (VIEW_SLUG[v] || 'vse'); }
+function clientHref(key, v, y) { return viewHref(v || S.view, y) + '/' + (slugOf[key] || ''); }
+function routeHash() { return S.sel && slugOf[S.sel] ? clientHref(S.sel) : viewHref(S.view); }
+function applyRoute(h) {
+  var m = /^#\/dv-(\d{4})(?:\/([^\/?]+))?(?:\/([^\/?]+))?/.exec(h || '');
+  S.pass = null; S.fam = null; S.del = null; S.unseason = null; S.lb = null; S.edit = null; S.memDel = null; S.menu = false;
+  if (!m) { S.season = S.data.current; S.view = 'all'; S.sel = null; return; }
+  S.season = Number(m[1]);
+  var v = 'all', sl = m[2] ? decodeURIComponent(m[2]) : '';
+  Object.keys(VIEW_SLUG).forEach(function (k) { if (VIEW_SLUG[k] === sl) v = k; });
+  var cs = m[3] ? decodeURIComponent(m[3]) : (sl && v === 'all' && bySlug[sl] ? sl : '');
+  S.view = v; S.sel = cs && bySlug[cs] ? bySlug[cs] : null;
+}
+function syncUrl() {
+  var h = routeHash(), c = S.sel && byKey[S.sel];
+  if (location.hash !== h) { try { history[S.replaceUrl ? 'replaceState' : 'pushState'](null, '', h); } catch (e) {} }
+  S.replaceUrl = false;
+  document.title = (c ? c.name : (STATUS_NAV[S.view] || VIEW_TITLE[S.view] || 'Заявки')) + ' · DV-' + S.season + ' — админка';
+}
+window.addEventListener('popstate', function () { if (!S.data || location.hash === routeHash()) return; applyRoute(location.hash); S.replaceUrl = true; render(); window.scrollTo(0, 0); });
 function driveId(u) { var m = String(u || '').match(/[-\w]{25,}/); return m ? m[0] : ''; }
 function thumb(u, w) { var id = driveId(u); return id ? 'https://drive.google.com/thumbnail?id=' + id + '&sz=w' + (w || 200) : ''; }
 function tgUrl(t) {
@@ -1176,8 +1214,10 @@ function load(keepSel) {
   run('adminData', [], function (d) {
     S.data = d; byKey = {};
     d.clients.forEach(function (c) { byKey[c.key] = c; });
+    buildSlugs();
     if (!S.season) S.season = d.current;
     if (!keepSel) S.sel = null;
+    if (!S.routed) { S.routed = true; applyRoute(location.hash); S.replaceUrl = true; }
     render();
   }, function () { if (!S.data && !(API && !getToken())) document.getElementById('app').innerHTML = '<div class="loading">Не удалось загрузить данные. Обновите страницу.</div>'; });
 }
@@ -1243,6 +1283,7 @@ function avatar(c, cls) {
 
 function render() {
   if (!S.data) return;
+  buildSlugs();
   var y = S.season, sel = S.sel && byKey[S.sel];
   var html = '<div class="app ' + (sel ? 'has-sel' : 'no-sel') + '">' + renderNav(y) + renderList(y, sel) + '<main class="main">' + (sel ? renderCard(sel, y) : renderOverview(y)) + '</main></div>';
   var keep = document.activeElement && document.activeElement.id;
@@ -1254,6 +1295,7 @@ function render() {
   }
   document.getElementById('app').innerHTML = html;
   if (keep) { var el = document.getElementById(keep); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch (e) {} } }
+  syncUrl();
 }
 
 function renderNav(y) {
@@ -1265,7 +1307,7 @@ function renderNav(y) {
   var years = Object.keys(seasons).map(Number).sort(function (a, b) { return b - a; });
   var SHORT = { needPass: 'паспорт?', noPass: 'нет пасп.', all: 'все', 'Новая': 'новые', 'Связался': 'связ.', 'Оплачено': 'оплач.', 'Подано': 'подано', invite: 'пригл.', won: 'выигр.', everyone: 'клиенты' };
   var item = function (key, label, n, extra) {
-    return '<button class="nav-item' + (S.view === key ? ' on' : '') + '" data-act="view" data-v="' + key + '" title="' + esc(label) + '"><span class="lab">' + (extra || '') + '<span class="lbl">' + esc(label) + '</span></span>' + n + '<span class="sh">' + SHORT[key] + '</span></button>';
+    return '<a class="nav-item' + (S.view === key ? ' on' : '') + '" href="' + viewHref(key, y) + '" data-act="view" data-v="' + key + '" title="' + esc(label) + '"><span class="lab">' + (extra || '') + '<span class="lbl">' + esc(label) + '</span></span>' + n + '<span class="sh">' + SHORT[key] + '</span></a>';
   };
   var inv = inviteList(S.data.current).length;
   var h = '<nav class="nav' + (S.navMin ? ' min' : '') + '" aria-label="Разделы"><div class="nav-top"><div class="brand"><span class="mark">GC</span><span class="lbl">Green Card</span><button class="nav-toggle" data-act="navMin" title="' + (S.navMin ? 'Развернуть панель' : 'Свернуть панель') + '" aria-label="' + (S.navMin ? 'Развернуть панель' : 'Свернуть панель') + '"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + (S.navMin ? 'M6 4l4 4-4 4' : 'M10 4L6 8l4 4') + '"/></svg></button></div>' +
@@ -1316,9 +1358,9 @@ function renderList(y, sel) {
   L.src.forEach(function (c) {
     var s = sub(c, y), st = s ? (s.result || s.status) : '';
     var fs = familySize(c);
-    h += '<button class="row' + (sel && sel.key === c.key ? ' on' : '') + '" data-act="open" data-v="' + esc(c.key) + '">' + avatar(c) +
+    h += '<a class="row' + (sel && sel.key === c.key ? ' on' : '') + '" href="' + clientHref(c.key) + '" data-act="open" data-v="' + esc(c.key) + '">' + avatar(c) +
       '<span class="row-main"><span class="row-top"><span class="row-name">' + esc(c.name) + '</span><span class="row-date">' + esc(lastDate(c)) + '</span></span>' +
-      '<span class="row-tags">' + (st ? pill(st) : '<span class="pill p-none">нет в DV-' + y + '</span>') + (s ? passPill(c, y) : '') + (fs > 1 ? '<span class="tag">семья · ' + fs + '</span>' : '') + '</span></span></button>';
+      '<span class="row-tags">' + (st ? pill(st) : '<span class="pill p-none">нет в DV-' + y + '</span>') + (s ? passPill(c, y) : '') + (fs > 1 ? '<span class="tag">семья · ' + fs + '</span>' : '') + '</span></span></a>';
   });
   return h + '</div></aside>';
 }
@@ -1345,10 +1387,10 @@ function renderOverview(y) {
   };
   h += block('Новые заявки — ответить', fresh.length, fresh, 'Новых заявок нет.', {
     view: 'Новая', meta: function (c) { return (sub(c, y).date || c.date) + ' · ' + (c.telegram || c.email || ''); },
-    html: function (c) { return '<button class="btn sm" data-act="open" data-v="' + esc(c.key) + '">Открыть</button>'; } });
+    html: function (c) { return '<a class="btn sm" href="' + clientHref(c.key) + '" data-act="open" data-v="' + esc(c.key) + '">Открыть</a>'; } });
   h += block('Оплачено — подать на сайте DV', paid.length, paid, 'Всех оплативших уже подал.', {
     view: 'Оплачено', meta: function (c) { var fs = familySize(c); return (fs > 1 ? 'семья · ' + fs : 'один') + (sub(c, y).paid ? ' · ' + sub(c, y).paid : ''); },
-    html: function (c) { return '<button class="btn sm" data-act="open" data-v="' + esc(c.key) + '">Открыть</button>'; } });
+    html: function (c) { return '<a class="btn sm" href="' + clientHref(c.key) + '" data-act="open" data-v="' + esc(c.key) + '">Открыть</a>'; } });
   h += '</div>';
   if (passMatters(y)) {
     var np = needPassList(y);
@@ -1493,6 +1535,10 @@ function renderCard(c, y) {
 /* ---------- события ---------- */
 document.addEventListener('click', function (e) {
   var el = e.target.closest('[data-act]'); if (!el) { if (S.menu && !e.target.closest('.season')) { S.menu = false; render(); } return; }
+  if (el.tagName === 'A' && (el.getAttribute('href') || '').charAt(0) === '#' && el.getAttribute('data-act') !== 'logout') {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button > 0) return; // новая вкладка — пусть открывает браузер
+    e.preventDefault();
+  }
   var a = el.getAttribute('data-act'), v = el.getAttribute('data-v');
   var c = S.sel && byKey[S.sel], y = S.season;
   if (a === 'resend') { L.stage = 'start'; sendCode(); return; }
