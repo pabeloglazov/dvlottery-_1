@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ENTRY, FORM_POST_URL, INTAKE_URL, TELEGRAM } from "./config.js";
 import { MONTHS, MONTHS_GEN, OPTIONS } from "./content.js";
+import AiPhoto, { IconBtn, Lightbox, runAiPhoto } from "./AiPhoto.jsx";
 
 const MARRIED = "Женат / замужем";
-const emptyPerson = () => ({ name: "", sex: "", bd: "", bm: "", by: "", birthCity: "", birthCountry: "", photo: null });
+const emptyPerson = () => ({ name: "", sex: "", bd: "", bm: "", by: "", birthCity: "", birthCountry: "", photo: null, photoMeta: null });
 
 const EMPTY = {
   name: "", sex: "", bd: "", bm: "", by: "", birthCity: "", birthCountry: "",
@@ -174,7 +175,7 @@ const pad = (n) => String(n).padStart(2, "0");
 const personLine = (p) => `${p.name.trim().toUpperCase()}, ${p.sex}, ${pad(p.bd)}.${pad(p.bm)}.${p.by}, ${p.birthCity.trim().toUpperCase()}, ${p.birthCountry.trim().toUpperCase()}`;
 
 // Отправка через скрипт: фото + ответ в форму одним запросом, с подтверждением.
-async function sendToScript(d, photo) {
+async function sendToScript(d, photo, photoMeta) {
   const married = d.marital === MARRIED;
   const res = await fetch(INTAKE_URL, {
     method: "POST",
@@ -185,6 +186,8 @@ async function sendToScript(d, photo) {
       education: d.education, marital: d.marital, children: childrenText(d),
       birth: { d: d.bd, m: d.bm, y: d.by },
       photo: photoPayload(photo),
+      photoOriginal: photo && photoMeta && !photoMeta.raw ? photoPayload(photoMeta.orig) : null,
+      photoCheck: photo && photoMeta && photoMeta.check ? { issues: photoMeta.check.issues || [] } : null,
       spouse: married ? personPayload(d.spouse) : null,
       kids: d.hasKids === "yes" ? d.kids.map(personPayload) : [],
       passport: passportPayload(d),
@@ -307,14 +310,10 @@ function PhotoBox({ photo, onFile, onRemove, size, t, inputId, accept = "image/*
 }
 
 // Блок данных другого человека: супруг(а) или ребёнок.
-function PersonFields({ prefix, p, onChange, errors, t, lang, onPhotoError }) {
+function PersonFields({ prefix, p, onChange, errors, t, lang, onOpen }) {
   const f = t.fields, fm = t.family;
   const id = (k) => prefix.replace(/\W/g, "") + "-" + k;
   const err = (k) => errors[prefix + k];
-  const onFile = async (file) => {
-    try { onChange("photo", await prepareImage(file)); } catch { onPhotoError(t.photoType); }
-  };
-
   return (
     <div className="person-fields">
       <Field id={id("name")} label={f.name.l} hint={f.name.h} error={err("name")}>
@@ -336,18 +335,11 @@ function PersonFields({ prefix, p, onChange, errors, t, lang, onPhotoError }) {
       </div>
       <div className="field">
         <span className="field-label">{fm.photo}</span>
-        <div className="mini-photo">
-          <PhotoBox photo={p.photo} onFile={onFile} onRemove={() => onChange("photo", null)} size={88} t={t} inputId={id("photo")} />
-          <div>
-            {CAN_UPLOAD && (
-              <label className="btn btn-ghost file-btn">
-                <input type="file" accept="image/*,.heic,.heif" onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ""; if (file) onFile(file); }} />
-                {p.photo ? fm.photoChange : fm.photoPick}
-              </label>
-            )}
-            <p className="field-hint">{fm.photoLater}</p>
-          </div>
-        </div>
+        {CAN_UPLOAD ? (
+          <AiPhoto compact value={p.photo} meta={p.photoMeta} t={t} inputId={id("photo")} error={err("photo")} onOpen={onOpen}
+            onChange={(fin, meta) => { onChange("photo", fin); onChange("photoMeta", meta); }} />
+        ) : <p className="field-hint">{fm.photoLater}</p>}
+        {CAN_UPLOAD && !p.photo && <p className="field-hint">{fm.photoLater}</p>}
       </div>
     </div>
   );
@@ -357,7 +349,9 @@ export default function EntryForm({ lang, t }) {
   const [step, setStep] = useState(0);
   const [d, setD] = useState(EMPTY);
   const [errors, setErrors] = useState({});
-  const [photo, setPhoto] = useState(null);        // dataURL фото заявителя
+  const [photo, setPhoto] = useState(null);        // dataURL фото заявителя (обработанное 600×600)
+  const [photoMeta, setPhotoMeta] = useState(null); // { orig, check, metrics, raw }
+  const [lb, setLb] = useState(null);              // какое фото открыто крупно
   const [state, setState] = useState("idle");      // idle | sending | done | error
   const [errMsg, setErrMsg] = useState("");
   const [scanBusy, setScanBusy] = useState("");    // какой скан сейчас читается (PDF)
@@ -459,7 +453,7 @@ export default function EntryForm({ lang, t }) {
     } catch { setOcr({ st: "fail", v: {} }); }
   };
   const aiTag = (...keys) => (ocr.st === "ok" && keys.every((k) => ocr.v[k] && d[k] === ocr.v[k])
-    ? <span className="ai-tag"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1l1.5 4.5L14 7l-4.5 1.5L8 13l-1.5-4.5L2 7l4.5-1.5z" /></svg>{f.passport.aiTag}</span> : null);
+    ? <span className="ai-tag"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1l1.5 4.5L14 7l-4.5 1.5L8 13l-1.5-4.5L2 7l4.5-1.5z" /></svg><span className="ai-tag-t">{f.passport.aiTag}</span></span> : null);
   const pickScan = (k) => (e) => { const file = e.target.files?.[0]; e.target.value = ""; if (file) onScan(k)(file); };
   const SCAN_ACCEPT = "image/*,.heic,.heif,application/pdf,.pdf";
 
@@ -471,7 +465,7 @@ export default function EntryForm({ lang, t }) {
     try {
       let viaScript = false;
       if (INTAKE_URL) {
-        try { await sendToScript(d, ownPhoto); viaScript = true; } catch { await sendToForm(d); }
+        try { await sendToScript(d, ownPhoto, photoMeta); viaScript = true; } catch { await sendToForm(d); }
       } else {
         await sendToForm(d);
       }
@@ -520,12 +514,10 @@ export default function EntryForm({ lang, t }) {
     { s: 0, k: f.birth.l, v: dateText(d) },
     { s: 0, k: f.birthCity.l, v: d.birthCity.toUpperCase() },
     { s: 0, k: f.birthCountry.l, v: d.birthCountry.toUpperCase() },
-    { s: 1, k: f.photo.l, v: photo && !d.photoLater ? "✓" : f.photo.later },
     ...(d.passportNone ? [{ s: 1, k: f.passport.title, v: f.passport.noneShort }] : [
       { s: 1, k: f.passport.number, v: d.pnum.replace(/\s+/g, "").toUpperCase() },
       { s: 1, k: f.passport.country, v: d.pcountry.toUpperCase() },
       { s: 1, k: f.passport.expiry, v: d.pd && d.pm && d.py ? `${d.pd} ${MONTHS_GEN[lang][+d.pm - 1]} ${d.py}` : "" },
-      { s: 1, k: f.passport.scan, v: d.scan1 && !d.scanLater ? f.passport.scanYes + (d.scan2 ? " (2)" : "") : f.passport.scanNo },
     ]),
     { s: 2, k: f.address.l, v: d.address },
     { s: 2, k: f.country.l, v: d.country.toUpperCase() },
@@ -536,6 +528,36 @@ export default function EntryForm({ lang, t }) {
     ...(d.marital === MARRIED ? [{ s: 3, k: fm.spouseShort, v: personSummary(d.spouse) }] : []),
     ...(d.hasKids === "yes" ? d.kids.map((k, i) => ({ s: 3, k: fm.kid(i + 1), v: personSummary(k) })) : [{ s: 3, k: fm.kidsShort, v: d.hasKids === "no" ? fm.no : "" }]),
   ], [d, photo, lang, t]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Фото для шага «Проверка» и окна просмотра.
+  const pa = t.photoAi;
+  const marks = (m) => (m?.check ? (m.check.issues?.length ? "bad" : "ok") : "");
+  const people = [
+    ...(d.marital === MARRIED ? [{ key: "spouse", p: d.spouse, title: fm.spouseShort, step: 3 }] : []),
+    ...(d.hasKids === "yes" ? d.kids.map((k, i) => ({ key: "kid" + i, p: k, title: fm.kid(i + 1), step: 3 })) : []),
+  ];
+  const tiles = [
+    { key: "me", title: pa.me, sub: d.name.toUpperCase(), src: !d.photoLater && photo, mark: marks(photoMeta), step: 1, miss: pa.later },
+    { key: "pass", title: pa.pass, sub: pa.passSub, src: !d.passportNone && !d.scanLater && d.scan1, doc: true, step: 1, miss: d.passportNone ? pa.none : pa.later },
+    ...people.map((x) => ({ key: x.key, title: x.title, sub: x.p.name.toUpperCase(), src: x.p.photo, mark: marks(x.p.photoMeta), step: x.step, miss: pa.later })),
+  ];
+  const issueNote = (m) => (m?.check?.issues?.length ? m.check.issues.map((k) => pa.issues[k]).join(" · ") : m?.check ? pa.okNote : "");
+  const lbItem = (() => {
+    if (!lb) return null;
+    if (lb === "me") return photo ? { title: pa.forApp, sub: d.name.toUpperCase() + " · 600×600", src: photo, note: issueNote(photoMeta), bad: !!photoMeta?.check?.issues?.length } : null;
+    if (lb === "pass") return d.scan1 ? { title: pa.pass, sub: pa.passSub, src: d.scan1, doc: true, accept: SCAN_ACCEPT } : null;
+    const x = people.find((y) => y.key === lb);
+    return x && x.p.photo ? { title: x.title, sub: x.p.name.toUpperCase() + " · 600×600", src: x.p.photo, note: issueNote(x.p.photoMeta), bad: !!x.p.photoMeta?.check?.issues?.length } : null;
+  })();
+  const lbReplace = async (file, onStage) => {
+    if (lb === "pass") { await onScan("scan1")(file); return; }
+    try {
+      const r = await runAiPhoto(file, onStage);
+      if (lb === "me") { setPhoto(r.fin); setPhotoMeta(r.meta); setD((p) => ({ ...p, photoLater: false })); }
+      else if (lb === "spouse") { setSpouse("photo", r.fin); setSpouse("photoMeta", r.meta); }
+      else if (lb.startsWith("kid")) { const i = +lb.slice(3); setKid(i)("photo", r.fin); setKid(i)("photoMeta", r.meta); }
+    } catch (e) { throw new Error(e.code === "no_face" ? pa.noFace : pa.type); }
+  };
 
   if (state === "done") {
     const married = last?.marital === MARRIED;
@@ -624,34 +646,19 @@ export default function EntryForm({ lang, t }) {
         {step === 1 && (
           <div className="fields">
             <section className="sub-block photo-block">
-              <div className="blk-head"><span className="blk-n">1</span><h4>{f.photo.l}</h4>{photo && !d.photoLater && <span className="blk-ok">✓ {f.photo.ready}</span>}</div>
+              <div className="blk-head"><span className="blk-n">1</span><h4>{f.photo.l}</h4>
+                {photo && !d.photoLater && (photoMeta?.check?.issues?.length
+                  ? <span className="blk-ok is-warn">! {t.photoAi.badgeBad}</span>
+                  : <span className="blk-ok">✓ {f.photo.ready}</span>)}
+              </div>
               <p className="sub-hint">{f.photo.h2}</p>
               <div className="reqs">{f.photo.reqs.map((r) => <span key={r}>{r}</span>)}</div>
               <div className="scan-slot">
-                {(!CAN_UPLOAD || d.photoLater) ? <p className="note">{f.photo.laterNote}</p>
-                  : photo ? (
-                    <div className="scan-card">
-                      <span className="photo-th"><img src={photo} alt="" /></span>
-                      <span className="scan-meta">
-                        <b className="is-ok">✓ {f.photo.done}</b><span>{f.photo.doneH}</span>
-                        <span className="scan-links">
-                          <label className="link">{f.photo.change}<input type="file" accept="image/*,.heic,.heif" onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ""; if (file) onPhotoFile(file); }} /></label>
-                          <button type="button" className="link" onClick={() => setPhoto(null)}>{f.passport.remove}</button>
-                        </span>
-                      </span>
-                    </div>
-                  ) : (
-                    <label
-                      className={"scan-drop" + (photoOver ? " is-over" : "")}
-                      onDragOver={(e) => { e.preventDefault(); setPhotoOver(true); }}
-                      onDragLeave={() => setPhotoOver(false)}
-                      onDrop={(e) => { e.preventDefault(); setPhotoOver(false); const file = e.dataTransfer.files?.[0]; if (file) onPhotoFile(file); }}
-                    >
-                      <input id="photo" type="file" accept="image/*,.heic,.heif" onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ""; if (file) onPhotoFile(file); }} />
-                      <span className="scan-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" strokeWidth="1.7" /></svg></span>
-                      <span><b>{f.photo.upload}</b><span>{f.photo.uploadH}</span></span>
-                    </label>
-                  )}
+                {(!CAN_UPLOAD || d.photoLater) ? <p className="note">{f.photo.laterNote}</p> : (
+                  <AiPhoto value={photo} meta={photoMeta} t={t} inputId="photo" onOpen={() => setLb("me")}
+                    error={errors.photo || (state === "error" ? errMsg : "")}
+                    onChange={(fin, meta) => { setPhoto(fin); setPhotoMeta(meta); if (fin) { setD((p) => ({ ...p, photoLater: false })); clearErr("photo"); } }} />
+                )}
                 {!(photo && !d.photoLater) && (
                   <label className="check">
                     <input type="checkbox" checked={!CAN_UPLOAD || d.photoLater} disabled={!CAN_UPLOAD} onChange={(e) => { set("photoLater")(e.target.checked); setErrors({}); }} />
@@ -659,7 +666,7 @@ export default function EntryForm({ lang, t }) {
                   </label>
                 )}
               </div>
-              {(errors.photo || (state === "error" && errMsg)) && <p className="field-error" role="alert">{errors.photo || errMsg}</p>}
+              {d.photoLater && errors.photo && <p className="field-error" role="alert">{errors.photo}</p>}
             </section>
 
             <section className="sub-block passport-block">
@@ -692,10 +699,11 @@ export default function EntryForm({ lang, t }) {
                               : ocr.st === "ok" ? <><b className="is-ok">✓ {f.passport.ocrOk}</b><span>{f.passport.ocrOkH}</span></>
                               : ocr.st === "fail" ? <><b className="is-warn">{f.passport.ocrFail}</b><span>{f.passport.ocrFailH}</span></>
                               : <><b className="is-ok">✓ {f.passport.scanYes}</b></>}
-                            <span className="scan-links">
-                              <label className="link">{f.passport.change}<input type="file" accept={SCAN_ACCEPT} onChange={pickScan("scan1")} /></label>
-                              {!d.scan2 && <label className="link">{f.passport.addPage}<input type="file" accept={SCAN_ACCEPT} onChange={pickScan("scan2")} /></label>}
-                              <button type="button" className="link" onClick={() => { set("scan1")(null); set("scan2")(null); setOcr({ st: "", v: {} }); }}>{f.passport.remove}</button>
+                            <span className="icon-row">
+                              <IconBtn icon="replace" label={f.passport.change} accept={SCAN_ACCEPT} onFile={(file) => onScan("scan1")(file)} />
+                              {!d.scan2 && <IconBtn icon="add" label={f.passport.addPageFull} accept={SCAN_ACCEPT} onFile={(file) => onScan("scan2")(file)} />}
+                              <IconBtn icon="remove" label={f.passport.remove} danger onClick={() => { set("scan1")(null); set("scan2")(null); setOcr({ st: "", v: {} }); }} />
+                              <IconBtn icon="zoom" label={t.photoAi.pass} onClick={() => setLb("pass")} />
                             </span>
                           </span>
                         </div>
@@ -764,7 +772,7 @@ export default function EntryForm({ lang, t }) {
                 <h4>{fm.spouseTitle}</h4>
                 <p className="sub-hint">{fm.spouseHint}</p>
                 <p className="note">{t.spouse.hint}</p>
-                <PersonFields prefix="spouse." p={d.spouse} onChange={setSpouse} errors={errors} t={t} lang={lang} onPhotoError={(m) => setErrors((e) => ({ ...e, "spouse.photo": m }))} />
+                <PersonFields prefix="spouse." p={d.spouse} onChange={setSpouse} errors={errors} t={t} lang={lang} onOpen={() => setLb("spouse")} />
               </section>
             )}
 
@@ -780,7 +788,7 @@ export default function EntryForm({ lang, t }) {
                       <h4>{fm.kid(i + 1)}</h4>
                       {d.kids.length > 1 && <button type="button" className="link" onClick={() => removeKid(i)}>{fm.remove}</button>}
                     </header>
-                    <PersonFields prefix={`kid${i}.`} p={k} onChange={setKid(i)} errors={errors} t={t} lang={lang} onPhotoError={(m) => setErrors((e) => ({ ...e, [`kid${i}.photo`]: m }))} />
+                    <PersonFields prefix={`kid${i}.`} p={k} onChange={setKid(i)} errors={errors} t={t} lang={lang} onOpen={() => setLb("kid" + i)} />
                   </section>
                 ))}
                 <button type="button" className="btn btn-ghost add-kid" onClick={addKid}>+ {fm.add}</button>
@@ -792,12 +800,30 @@ export default function EntryForm({ lang, t }) {
         {step === 4 && (
           <div className="review">
             <p className="review-lead">{t.review}</p>
-            {[0, 1, 2, 3].map((s) => (
+            {[1, 0, 2, 3].map((s) => (
               <section key={s} className="review-group">
                 <header>
-                  <h4>{t.steps[s]}</h4>
+                  <h4>{s === 1 ? t.photoAi.docs : t.steps[s]}</h4>
                   <button type="button" className="link" onClick={() => { setStep(s); scrollTop(); }}>{t.edit}</button>
                 </header>
+                {s === 1 && (
+                  <div className="rv-tiles">
+                    {tiles.map((x) => x.src ? (
+                      <button key={x.key} type="button" className="rv-tile" onClick={() => setLb(x.key)}>
+                        <span className={"rv-pic" + (x.doc ? " is-doc" : "")}><img src={x.src} alt="" />
+                          {!x.doc && x.mark && <span className={"ai-badge" + (x.mark === "bad" ? " is-bad" : "")}>{x.mark === "bad" ? "!" : "✓"}</span>}
+                          <span className="rv-zoom" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5L14 14M7 5v4M5 7h4" /></svg></span>
+                        </span>
+                        <span className="rv-t">{x.title}</span><span className="rv-s">{x.sub}</span>
+                      </button>
+                    ) : (
+                      <button key={x.key} type="button" className="rv-tile" onClick={() => { setStep(x.step); scrollTop(); }}>
+                        <span className="rv-pic is-miss">{x.miss}</span>
+                        <span className="rv-t">{x.title}</span><span className="rv-s">{x.sub}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <dl>
                   {review.filter((r) => r.s === s).map((r) => (
                     <div key={r.k}><dt>{r.k}</dt><dd>{r.v}</dd></div>
@@ -809,6 +835,8 @@ export default function EntryForm({ lang, t }) {
             {state === "error" && <p className="field-error" role="alert">{errMsg}</p>}
           </div>
         )}
+
+        <Lightbox item={lbItem} t={t} onClose={() => setLb(null)} onReplace={lbReplace} />
 
         <div className="form-nav">
           {step > 0 ? <button type="button" className="btn btn-ghost" onClick={back}>{t.back}</button> : <span />}

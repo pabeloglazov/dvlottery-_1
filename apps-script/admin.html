@@ -54,6 +54,8 @@ a{color:var(--green)}
 .lb-fig figcaption{display:flex;align-items:center;justify-content:space-between;gap:12px;color:#fff;flex-wrap:wrap}
 .lb-btns{display:flex;gap:8px}
 .pass-scans{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.ph-check{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px}
+.linkbtn{border:0;background:none;padding:0;font-size:13px;color:var(--green);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 /* блок загранпаспорта */
 .pp{padding:0;overflow:hidden}
 .pp-h{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line2);flex-wrap:wrap}
@@ -779,13 +781,21 @@ function passUpload(c, file) {
     }, function () { S.scanning = null; S.scanPreview = null; render(); });
   }, function () { toast(pdf ? 'Не получилось открыть PDF' : 'Не получилось открыть файл'); });
 }
+/* Колонка «Проверка фото»: «оригинал: URL» и «проверка: подходит | очки, тени». */
+function photoCheckLine(c) {
+  var t = String(c.photoCheck || ''), orig = (t.match(/оригинал:\s*(https?:\S+)/) || [])[1], chk = ((t.match(/проверка:\s*(.+)/) || [])[1] || '').trim();
+  if (!orig && !chk) return '';
+  var ok = chk === 'подходит', na = !chk || chk === 'не проводилась';
+  return '<span class="ph-check">' + (chk ? '<span class="pill ' + (ok ? 'p-paid' : na ? 'p-none' : 'p-new') + '">ИИ: ' + esc(ok ? 'фото подходит' : na ? 'не проверено' : chk) + '</span>' : '') +
+    (orig ? '<button class="linkbtn" data-act="photoView" data-v="' + esc(orig) + '" data-n="' + esc(c.name + ' — оригинал фото') + '">оригинал фото</button>' : '') + '</span>';
+}
 function renderCard(c, y) {
   var s = sub(c, y), idx = s ? STATUSES.indexOf(s.status) : -1, fam = family(c), seasons = seasonsOf(c);
   var tg = tgUrl(c.telegram), t = thumb(c.photo, 400);
   var missing = (c.photo ? 0 : 1) + fam.filter(function (m) { return !m.photo; }).length;
   var h = '<button class="back" data-act="close">← Назад к списку</button>' +
     '<div class="head"><span class="big-av" style="background:' + avColor(c.key) + '">' + esc(initials(c.name)) + (t ? '<button class="ph-btn" data-act="photoView" data-v="' + esc(c.photo) + '" data-n="' + esc(c.name) + '" aria-label="Открыть фото"><img src="' + t + '" alt="" referrerpolicy="no-referrer" onerror="this.remove()"></button>' : '') + '</span>' +
-    '<div class="head-main"><h1>' + esc(c.name) + '</h1><span class="muted">' + (seasons.length ? 'Клиент с DV-' + seasons[seasons.length - 1] + ' · сезонов: ' + seasons.length : 'Новый клиент') + (c.telegram ? ' · ' + esc(c.telegram) : '') + '</span>' +
+    '<div class="head-main"><h1>' + esc(c.name) + '</h1><span class="muted">' + (seasons.length ? 'Клиент с DV-' + seasons[seasons.length - 1] + ' · сезонов: ' + seasons.length : 'Новый клиент') + (c.telegram ? ' · ' + esc(c.telegram) : '') + '</span>' + photoCheckLine(c) +
     '<span class="row-tags">' + (s ? pill(s.result || s.status) : '<span class="pill p-none">нет в DV-' + y + '</span>') + '<span class="tag">' + (fam.length ? 'семья · ' + (fam.length + 1) : 'один') + '</span>' +
     (missing ? '<span class="pill" style="background:#fbe3e4;color:#9b2730">нет фото: ' + missing + '</span>' : '<span class="pill p-paid">все фото есть</span>') + '</span></div>' +
     '<div class="head-actions">' + (tg ? '<a class="btn pri" href="' + esc(tg) + '" target="_blank" rel="noopener">Telegram</a>' : '') + (c.email ? '<a class="btn" href="mailto:' + esc(c.email) + '">Email</a>' : '') + '<button class="btn" data-act="copyAll">Скопировать всё</button>' +

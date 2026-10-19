@@ -39,6 +39,7 @@ const TITLES = {
   kidsData: 'Данные детей',
   passport: 'Загранпаспорт',
   passportScan: 'Скан загранпаспорта',
+  photoCheck: 'Проверка фото',
 };
 const NO_PASSPORT = 'НЕТ ЗАГРАНПАСПОРТА';
 
@@ -46,7 +47,8 @@ const NO_PASSPORT = 'НЕТ ЗАГРАНПАСПОРТА';
 function ensurePassportItems_(form) {
   let anchor = findItem_(form, TITLES.kidsData);
   [['passport', 'Заполняется сайтом: номер, страна выдачи, срок действия — или «НЕТ ЗАГРАНПАСПОРТА».'],
-   ['passportScan', 'Заполняется сайтом: ссылки на сканы страницы с фото и страницы с подписью.']].forEach(function (x) {
+   ['passportScan', 'Заполняется сайтом: ссылки на сканы страницы с фото и страницы с подписью.'],
+   ['photoCheck', 'Заполняется сайтом: ссылка на оригинал фото и результат ИИ-проверки требований.']].forEach(function (x) {
     let item = findItem_(form, TITLES[x[0]]);
     if (!item) {
       item = form.addParagraphTextItem().setTitle(TITLES[x[0]]).setHelpText(x[1]).setRequired(false);
@@ -121,6 +123,47 @@ function checkOpenAiKey() {
   if (!key) return 'Нет свойства OPENAI_API_KEY';
   const code = UrlFetchApp.fetch('https://api.openai.com/v1/models', { headers: { Authorization: 'Bearer ' + key }, muteHttpExceptions: true }).getResponseCode();
   return code === 200 ? 'Ключ работает' : 'OpenAI ответил ' + code + ' — проверьте ключ';
+}
+
+/* ---------- ИИ-проверка фото на требования DV ---------- */
+const PHOTO_ISSUES = { glasses: 'очки', headwear: 'головной убор', not_frontal: 'не анфас', eyes_closed: 'глаза закрыты', mouth_open: 'открыт рот / улыбка с зубами',
+  shadows: 'тени на лице', blurry: 'размыто', dark: 'темно / пересвет', hair_covers_face: 'волосы закрывают лицо', multiple_people: 'несколько людей', no_face: 'лицо не видно', cut_off: 'голова обрезана' };
+
+/** image: {mime, data} — фото уже на белом фоне 600×600. → { ok: bool, issues: [коды] } */
+function checkPhoto_(image) {
+  const key = PropertiesService.getScriptProperties().getProperty('OPENAI_API_KEY');
+  if (!key) throw new Error('Проверка не настроена: нет OPENAI_API_KEY');
+  if (!image || !image.data) throw new Error('Нет изображения');
+  if (image.data.length > MAX_PHOTO_BYTES * 1.4) throw new Error('Файл слишком большой');
+  ocrQuota_();
+  const prompt = 'This is a US Diversity Visa (DV lottery) entry photo, already cropped to 600x600 with the background replaced by white. ' +
+    'Check ONLY the person against DV photo rules. Return JSON {"issues": [codes]} using only these codes: ' + Object.keys(PHOTO_ISSUES).join(', ') + '. ' +
+    'glasses = any eyeglasses or sunglasses; headwear = hat/cap/scarf (religious head covering is allowed — do not flag); not_frontal = head turned or tilted, not looking at camera; ' +
+    'eyes_closed; mouth_open = open mouth or big toothy smile (a closed-mouth smile is fine); shadows = noticeable shadows on the face; blurry; dark = too dark or overexposed face; ' +
+    'hair_covers_face = hair covers eyes or part of the face; multiple_people; no_face; cut_off = top of head or chin cut off by the frame. Return an empty list if the photo is fine. Be strict but do not invent problems.';
+  const res = UrlFetchApp.fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true, headers: { Authorization: 'Bearer ' + key },
+    payload: JSON.stringify({ model: OCR_MODEL, temperature: 0, max_tokens: 120, response_format: { type: 'json_object' },
+      messages: [{ role: 'system', content: 'You check photos for official document requirements and answer only with JSON.' },
+        { role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + image.data, detail: 'high' } }] }] })
+  });
+  if (res.getResponseCode() !== 200) { console.error('OpenAI ' + res.getResponseCode() + ': ' + res.getContentText().slice(0, 500)); throw new Error('Сервис проверки недоступен'); }
+  let out = {};
+  try { out = JSON.parse(JSON.parse(res.getContentText()).choices[0].message.content || '{}'); } catch (e) { out = {}; }
+  const issues = (Array.isArray(out.issues) ? out.issues : []).map(String).filter(function (c, i, a) { return PHOTO_ISSUES[c] && a.indexOf(c) === i; });
+  return { ok: !issues.length, issues: issues };
+}
+function publicCheckPhoto_(d) {
+  try { return { ok: true, result: checkPhoto_(d.image) }; }
+  catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+}
+/** Текст для колонки «Проверка фото». */
+function photoCheckText_(origUrl, check) {
+  const lines = [];
+  if (origUrl) lines.push('оригинал: ' + origUrl);
+  if (check && Array.isArray(check.issues)) lines.push('проверка: ' + (check.issues.length ? check.issues.map(function (c) { return PHOTO_ISSUES[c] || c; }).join(', ') : 'подходит'));
+  else if (origUrl) lines.push('проверка: не проводилась');
+  return lines.join('\n');
 }
 
 /** Публичное распознавание для анкеты: { action: 'recognizePassport', image: {mime, data} }. */
@@ -247,6 +290,7 @@ function doPost(e) {
   try {
     const d = JSON.parse(e.postData.contents || '{}');
     if (d.action === 'recognizePassport') return json_(publicRecognize_(d)); // распознавание паспорта в анкете
+    if (d.action === 'checkPhoto') return json_(publicCheckPhoto_(d)); // ИИ-проверка фото в анкете
     if (d.action) return json_(api_(d)); // админка на сайте
     if (d.website) return json_({ ok: true }); // ловушка для ботов
 
@@ -288,6 +332,7 @@ function doPost(e) {
       children: s('children'), telegram: s('telegram'), education: s('education'),
       spouseData: spouseText, kidsData: kidsText,
       passport: '', passportScan: '',
+      photoCheck: d.photo && d.photo.data ? photoCheckText_(savePhoto(d.photoOriginal, applicant + ' ORIGINAL'), d.photoCheck) : '',
     };
     const pp = d.passport || null;
     if (pp && pp.none) values.passport = NO_PASSPORT;
@@ -350,7 +395,7 @@ const COLS = {
   country: ['страна, в которой вы живете сейчас'], email: ['ваш действующий e-mail адрес'],
   education: ['укажите, какое у вас образование'], marital: ['укажите ваше текущее семейное положение'],
   children: ['есть ли у вас дети?'], telegram: ['ваш telegram для связи'],
-  spouseData: ['данные супруга(и)'], kidsData: ['данные детей'], passport: ['загранпаспорт'], passportScan: ['скан загранпаспорта'],
+  spouseData: ['данные супруга(и)'], kidsData: ['данные детей'], passport: ['загранпаспорт'], passportScan: ['скан загранпаспорта'], photoCheck: ['проверка фото'],
   confirm: ['column 1', 'номер подтверждения'], result: ['результат'], status: ['статус'], note: ['заметка']
 };
 
@@ -523,7 +568,7 @@ function adminData() {
         address: get(r, 'address'), country: get(r, 'country'), email: get(r, 'email'),
         education: get(r, 'education'), marital: get(r, 'marital'), children: get(r, 'children'),
         telegram: get(r, 'telegram'), spouseData: get(r, 'spouseData'), kidsData: get(r, 'kidsData'),
-        passport: get(r, 'passport'), passportScan: get(r, 'passportScan')
+        passport: get(r, 'passport'), passportScan: get(r, 'passportScan'), photoCheck: get(r, 'photoCheck')
       });
     }
     cl.rows.push(r + 1);
@@ -974,6 +1019,8 @@ a{color:var(--green)}
 .lb-fig figcaption{display:flex;align-items:center;justify-content:space-between;gap:12px;color:#fff;flex-wrap:wrap}
 .lb-btns{display:flex;gap:8px}
 .pass-scans{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.ph-check{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px}
+.linkbtn{border:0;background:none;padding:0;font-size:13px;color:var(--green);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 /* блок загранпаспорта */
 .pp{padding:0;overflow:hidden}
 .pp-h{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line2);flex-wrap:wrap}
@@ -1699,13 +1746,21 @@ function passUpload(c, file) {
     }, function () { S.scanning = null; S.scanPreview = null; render(); });
   }, function () { toast(pdf ? 'Не получилось открыть PDF' : 'Не получилось открыть файл'); });
 }
+/* Колонка «Проверка фото»: «оригинал: URL» и «проверка: подходит | очки, тени». */
+function photoCheckLine(c) {
+  var t = String(c.photoCheck || ''), orig = (t.match(/оригинал:\s*(https?:\S+)/) || [])[1], chk = ((t.match(/проверка:\s*(.+)/) || [])[1] || '').trim();
+  if (!orig && !chk) return '';
+  var ok = chk === 'подходит', na = !chk || chk === 'не проводилась';
+  return '<span class="ph-check">' + (chk ? '<span class="pill ' + (ok ? 'p-paid' : na ? 'p-none' : 'p-new') + '">ИИ: ' + esc(ok ? 'фото подходит' : na ? 'не проверено' : chk) + '</span>' : '') +
+    (orig ? '<button class="linkbtn" data-act="photoView" data-v="' + esc(orig) + '" data-n="' + esc(c.name + ' — оригинал фото') + '">оригинал фото</button>' : '') + '</span>';
+}
 function renderCard(c, y) {
   var s = sub(c, y), idx = s ? STATUSES.indexOf(s.status) : -1, fam = family(c), seasons = seasonsOf(c);
   var tg = tgUrl(c.telegram), t = thumb(c.photo, 400);
   var missing = (c.photo ? 0 : 1) + fam.filter(function (m) { return !m.photo; }).length;
   var h = '<button class="back" data-act="close">← Назад к списку</button>' +
     '<div class="head"><span class="big-av" style="background:' + avColor(c.key) + '">' + esc(initials(c.name)) + (t ? '<button class="ph-btn" data-act="photoView" data-v="' + esc(c.photo) + '" data-n="' + esc(c.name) + '" aria-label="Открыть фото"><img src="' + t + '" alt="" referrerpolicy="no-referrer" onerror="this.remove()"></button>' : '') + '</span>' +
-    '<div class="head-main"><h1>' + esc(c.name) + '</h1><span class="muted">' + (seasons.length ? 'Клиент с DV-' + seasons[seasons.length - 1] + ' · сезонов: ' + seasons.length : 'Новый клиент') + (c.telegram ? ' · ' + esc(c.telegram) : '') + '</span>' +
+    '<div class="head-main"><h1>' + esc(c.name) + '</h1><span class="muted">' + (seasons.length ? 'Клиент с DV-' + seasons[seasons.length - 1] + ' · сезонов: ' + seasons.length : 'Новый клиент') + (c.telegram ? ' · ' + esc(c.telegram) : '') + '</span>' + photoCheckLine(c) +
     '<span class="row-tags">' + (s ? pill(s.result || s.status) : '<span class="pill p-none">нет в DV-' + y + '</span>') + '<span class="tag">' + (fam.length ? 'семья · ' + (fam.length + 1) : 'один') + '</span>' +
     (missing ? '<span class="pill" style="background:#fbe3e4;color:#9b2730">нет фото: ' + missing + '</span>' : '<span class="pill p-paid">все фото есть</span>') + '</span></div>' +
     '<div class="head-actions">' + (tg ? '<a class="btn pri" href="' + esc(tg) + '" target="_blank" rel="noopener">Telegram</a>' : '') + (c.email ? '<a class="btn" href="mailto:' + esc(c.email) + '">Email</a>' : '') + '<button class="btn" data-act="copyAll">Скопировать всё</button>' +

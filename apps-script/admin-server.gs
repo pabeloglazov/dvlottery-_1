@@ -22,7 +22,7 @@ const COLS = {
   country: ['страна, в которой вы живете сейчас'], email: ['ваш действующий e-mail адрес'],
   education: ['укажите, какое у вас образование'], marital: ['укажите ваше текущее семейное положение'],
   children: ['есть ли у вас дети?'], telegram: ['ваш telegram для связи'],
-  spouseData: ['данные супруга(и)'], kidsData: ['данные детей'], passport: ['загранпаспорт'], passportScan: ['скан загранпаспорта'],
+  spouseData: ['данные супруга(и)'], kidsData: ['данные детей'], passport: ['загранпаспорт'], passportScan: ['скан загранпаспорта'], photoCheck: ['проверка фото'],
   confirm: ['column 1', 'номер подтверждения'], result: ['результат'], status: ['статус'], note: ['заметка']
 };
 
@@ -195,7 +195,7 @@ function adminData() {
         address: get(r, 'address'), country: get(r, 'country'), email: get(r, 'email'),
         education: get(r, 'education'), marital: get(r, 'marital'), children: get(r, 'children'),
         telegram: get(r, 'telegram'), spouseData: get(r, 'spouseData'), kidsData: get(r, 'kidsData'),
-        passport: get(r, 'passport'), passportScan: get(r, 'passportScan')
+        passport: get(r, 'passport'), passportScan: get(r, 'passportScan'), photoCheck: get(r, 'photoCheck')
       });
     }
     cl.rows.push(r + 1);
