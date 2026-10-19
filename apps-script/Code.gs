@@ -476,7 +476,7 @@ function api_(d) {
       adminSetCurrentSeason: adminSetCurrentSeason, adminAddMember: adminAddMember, adminSetPhoto: adminSetPhoto, adminDeleteClient: adminDeleteClient,
       adminUpdateField: adminUpdateField, adminUpdateMember: adminUpdateMember, adminRemoveMember: adminRemoveMember, adminRemoveFromSeason: adminRemoveFromSeason,
       adminSetPassport: adminSetPassport, adminAddPassportScan: adminAddPassportScan,
-      adminScanPassport: adminScanPassport, adminRemovePassportScan: adminRemovePassportScan };
+      adminScanPassport: adminScanPassport, adminRemovePassportScan: adminRemovePassportScan, adminCheckPhoto: adminCheckPhoto, adminGetPhoto: adminGetPhoto, adminSetMemberPhoto: adminSetMemberPhoto };
     const fn = fns[d.action];
     if (!fn) return { ok: false, error: 'Неизвестное действие' };
     API_AUTH_ = true;
@@ -934,8 +934,40 @@ function adminAddMember(row, kind, p) {
   return line;
 }
 
-/** Обновить фото заявителя из админки. */
-function adminSetPhoto(row, photo) {
+/** Отдать фото из Drive в админку (для ИИ-обработки старых фото). */
+function adminGetPhoto(url) {
+  assertOwner_();
+  const id = (String(url || '').match(/[-\w]{25,}/) || [])[0];
+  if (!id) throw new Error('Не нашёл файл фото');
+  const blob = DriveApp.getFileById(id).getBlob();
+  const bytes = blob.getBytes();
+  if (bytes.length > 15 * 1024 * 1024) throw new Error('Фото слишком большое');
+  return { mime: blob.getContentType() || 'image/jpeg', data: Utilities.base64Encode(bytes), name: blob.getName() };
+}
+
+/** Заменить только фото родственника (остальные данные строки не трогаем). */
+function adminSetMemberPhoto(row, kind, idx, photo) {
+  assertOwner_();
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const f = familyCell_(row, kind);
+    idx = Number(idx);
+    if (!(idx >= 0 && idx < f.lines.length)) throw new Error('Не найдено — обновите страницу');
+    const name = f.lines[idx].split(',')[0].trim();
+    const url = savePhotoFile_(photo, name + (kind === 'spouse' ? ' (SPOUSE OF ' : ' (CHILD OF ') + f.applicant + ') DV');
+    f.lines[idx] = /фото:\s*\S*/.test(f.lines[idx]) ? f.lines[idx].replace(/фото:\s*\S*/, 'фото: ' + url) : f.lines[idx] + ', фото: ' + url;
+    return writeFamily_(f, kind, row);
+  } finally { lock.releaseLock(); }
+}
+
+/** ИИ-проверка фото из админки (фото уже обработано в браузере). */
+function adminCheckPhoto(photo) {
+  assertOwner_();
+  return checkPhoto_(photo);
+}
+
+/** Обновить фото заявителя из админки. extra: { original, check } — оригинал и результат ИИ-проверки. */
+function adminSetPhoto(row, photo, extra) {
   assertOwner_();
   row = Number(row);
   const sh = responsesSheet_();
@@ -945,7 +977,19 @@ function adminSetPhoto(row, photo) {
   const name = String(sh.getRange(row, c.name + 1).getDisplayValue());
   const url = savePhotoFile_(photo, name);
   sh.getRange(row, c.photoNew + 1).setValue(url);
-  return url;
+  let meta = '';
+  if (extra && (extra.original || extra.originalUrl || extra.check)) {
+    let cc = c;
+    if (cc.photoCheck === undefined) {
+      try { ensurePassportItems_(openForm_()); SpreadsheetApp.flush(); cc = colIndex_(sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0]); } catch (e) { /* колонка появится позже */ }
+    }
+    if (cc.photoCheck !== undefined) {
+      const orig = extra.original ? savePhotoFile_(extra.original, name + ' ORIGINAL') : String(extra.originalUrl || '');
+      meta = photoCheckText_(orig, extra.check || null);
+      sh.getRange(row, cc.photoCheck + 1).setValue(meta);
+    }
+  }
+  return extra ? { url: url, photoCheck: meta } : url;
 }
 
 function adminPage_() {
@@ -1019,6 +1063,23 @@ a{color:var(--green)}
 .lb-fig figcaption{display:flex;align-items:center;justify-content:space-between;gap:12px;color:#fff;flex-wrap:wrap}
 .lb-btns{display:flex;gap:8px}
 .pass-scans{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.ai-box{width:min(420px,100%);background:#fff;border-radius:16px;padding:16px;cursor:default}
+.ai-box-h{display:flex;flex-direction:column;margin-bottom:12px}.ai-box-h b{font-size:16px}
+.ai-box-b{display:flex;gap:14px;align-items:center}
+.ai-th{flex:none;width:76px;height:96px;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:#eef2f7}
+.ai-th img{width:100%;height:100%;object-fit:cover;display:block}
+.ai-stages{display:grid;gap:7px}
+.ai-stg{display:flex;align-items:center;gap:9px;font-size:14px;color:var(--ink3)}
+.ai-stg i{flex:none;width:18px;height:18px;border-radius:50%;border:1.5px solid #c8cfdc;display:grid;place-items:center;font-style:normal;font-size:11px}
+.ai-stg.on{color:#5b4bc4;font-weight:600}.ai-stg.on i{border-color:#5b4bc4;border-top-color:transparent;animation:aiSpin .8s linear infinite}
+.ai-stg.ok{color:var(--ink)}.ai-stg.ok i{background:var(--green);border-color:var(--green);color:#fff}
+@keyframes aiSpin{to{transform:rotate(360deg)}}
+.ai-chip{display:inline-flex;align-items:center;gap:3px;border:1px solid #d9d3f5;background:#f4f2fd;color:#5b4bc4;border-radius:999px;padding:2px 8px;font-size:11.5px;font-weight:700;cursor:pointer}
+.ai-chip svg,.ai-btn svg{width:12px;height:12px}
+.ai-chip:hover{background:#e9e5fb}
+.btn.ai-btn{border-color:#d9d3f5;background:#f4f2fd;color:#5b4bc4}.btn.ai-btn:hover{background:#e9e5fb}
+.fam-ph{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap}.fam-ph img{width:56px;height:56px;border-radius:10px;object-fit:cover;border:1px solid var(--line)}
+.fam-ph .muted{flex-basis:100%}
 .ph-check{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px}
 .linkbtn{border:0;background:none;padding:0;font-size:13px;color:var(--green);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 /* блок загранпаспорта */
@@ -1464,6 +1525,139 @@ function addToSeason(list, y) {
     function (n) { toast((list.length === 1 ? list[0].name : list.length + ' клиентов') + ' → DV-' + y); }, function () { load(true); });
 }
 
+/* ---------- ИИ-обработка фото: белый фон, 600×600 по правилам DV, проверка требований (как в анкете) ---------- */
+var MP_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+var MP_MODELS = 'https://greencard-pabeloglazov.ru/models/';
+var AI_STAGES = ['Нахожу лицо', 'Убираю фон — делаю белый', 'Кадрирую 600×600 по правилам DV', 'Проверяю требования'];
+var AI_ISSUES = { glasses: 'очки', headwear: 'головной убор', not_frontal: 'не анфас', eyes_closed: 'глаза закрыты', mouth_open: 'открыт рот', shadows: 'тени на лице', blurry: 'размыто', dark: 'темно / пересвет', hair_covers_face: 'волосы закрывают лицо', multiple_people: 'несколько людей', no_face: 'лицо не видно', cut_off: 'голова обрезана' };
+var mpP = null;
+function mpTools() {
+  if (!mpP) {
+    mpP = import(MP_URL + '/vision_bundle.mjs').then(function (m) {
+      return m.FilesetResolver.forVisionTasks(MP_URL + '/wasm').then(function (fs) {
+        var make = function (dlg) {
+          return Promise.all([
+            m.FaceDetector.createFromOptions(fs, { baseOptions: { modelAssetPath: MP_MODELS + 'face.tflite', delegate: dlg }, runningMode: 'IMAGE', minDetectionConfidence: 0.5 }),
+            m.ImageSegmenter.createFromOptions(fs, { baseOptions: { modelAssetPath: MP_MODELS + 'selfie.tflite', delegate: dlg }, runningMode: 'IMAGE', outputConfidenceMasks: true, outputCategoryMask: false })
+          ]);
+        };
+        return make('GPU').catch(function () { return make('CPU'); }).then(function (r) { return { face: r[0], seg: r[1] }; });
+      });
+    });
+    mpP.catch(function () { mpP = null; });
+  }
+  return mpP;
+}
+function cnv(w, h) { var c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+function jpegUnder(c, max) { var q = 0.92, u = c.toDataURL('image/jpeg', q); while (u.length * 0.75 > max && q > 0.4) { q -= 0.06; u = c.toDataURL('image/jpeg', q); } return u; }
+function loadImg(file) {
+  return new Promise(function (res, rej) {
+    var url = URL.createObjectURL(file), img = new Image();
+    img.onload = function () { URL.revokeObjectURL(url); res(img); };
+    img.onerror = function () { URL.revokeObjectURL(url); rej(Object.assign(new Error('load'), { code: 'load' })); };
+    img.src = url;
+  });
+}
+var pause = function () { return new Promise(function (r) { setTimeout(r, 30); }); };
+async function aiProcess(file, onStage) {
+  var SIZE = 600, img = await loadImg(file);
+  var k = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight)), W = Math.round(img.naturalWidth * k), H = Math.round(img.naturalHeight * k);
+  var src = cnv(W, H); src.getContext('2d').drawImage(img, 0, 0, W, H);
+  var original = jpegUnder(src, 1.5 * 1024 * 1024);
+  onStage(0); await pause();
+  var t;
+  try { t = await mpTools(); } catch (e) { throw Object.assign(new Error('tools'), { code: 'tools', original: original }); }
+  var det = t.face.detect(src).detections || [];
+  if (!det.length) throw Object.assign(new Error('no_face'), { code: 'no_face' });
+  var f = det.slice().sort(function (a, b) { return b.boundingBox.width * b.boundingBox.height - a.boundingBox.width * a.boundingBox.height; })[0];
+  var kp = f.keypoints.map(function (p) { return { x: p.x * W, y: p.y * H }; });
+  var eyeX = (kp[0].x + kp[1].x) / 2, eyeY = (kp[0].y + kp[1].y) / 2, mouthY = kp[3].y, bb = f.boundingBox;
+  onStage(1); await pause();
+  var res = t.seg.segment(src), masks = res.confidenceMasks || [], best = null, bestV = -1;
+  masks.forEach(function (m) {
+    var a = m.getAsFloat32Array(), mx = Math.min(m.width - 1, Math.round(eyeX / W * m.width)), my = Math.min(m.height - 1, Math.round(eyeY / H * m.height)), v = a[my * m.width + mx];
+    if (v > bestV) { bestV = v; best = { a: Float32Array.from(a), w: m.width, h: m.height }; }
+  });
+  if (res.close) res.close();
+  if (!best) throw Object.assign(new Error('tools'), { code: 'tools', original: original });
+  var mc = cnv(best.w, best.h), md = mc.getContext('2d').createImageData(best.w, best.h);
+  for (var i = 0; i < best.a.length; i++) md.data[i * 4 + 3] = Math.round(Math.min(1, Math.max(0, (best.a[i] - 0.25) / 0.5)) * 255);
+  mc.getContext('2d').putImageData(md, 0, 0);
+  var person = cnv(W, H), pc = person.getContext('2d');
+  pc.drawImage(src, 0, 0); pc.globalCompositeOperation = 'destination-in';
+  pc.filter = 'blur(' + Math.max(1, Math.round(W / 500)) + 'px)'; pc.drawImage(mc, 0, 0, W, H); pc.filter = 'none'; pc.globalCompositeOperation = 'source-over';
+  var topY = Math.max(0, bb.originY - bb.height * 0.45);
+  var x0 = Math.max(0, Math.floor((bb.originX + bb.width * 0.3) / W * best.w)), x1 = Math.min(best.w - 1, Math.ceil((bb.originX + bb.width * 0.7) / W * best.w)), yLim = Math.floor(eyeY / H * best.h);
+  outer: for (var y = 0; y < yLim; y++) for (var x = x0; x <= x1; x++) if (best.a[y * best.w + x] > 0.5) { topY = y / best.h * H; break outer; }
+  var chinY = Math.max(bb.originY + bb.height, mouthY + (mouthY - eyeY) * 0.9), headH = Math.max(10, chinY - topY);
+  onStage(2); await pause();
+  var s = SIZE * 0.6 / headH, EMIN = SIZE * 0.31, EMAX = SIZE * 0.44;
+  var eyeT = Math.min(EMAX, Math.max(EMIN, Math.max(SIZE * 0.375, (eyeY - topY) * s + SIZE * 0.05)));
+  if (eyeT - (eyeY - topY) * s < SIZE * 0.02) s = (eyeT - SIZE * 0.02) / (eyeY - topY);
+  var out = cnv(SIZE, SIZE), oc = out.getContext('2d');
+  oc.fillStyle = '#fff'; oc.fillRect(0, 0, SIZE, SIZE); oc.imageSmoothingQuality = 'high';
+  oc.drawImage(person, SIZE / 2 - eyeX * s, eyeT - eyeY * s, W * s, H * s);
+  return { original: original, processed: jpegUnder(out, 240 * 1024), head: Math.round(headH * s / SIZE * 100), eyes: Math.round((SIZE - eyeT) / SIZE * 100) };
+}
+var asJpeg = function (u) { return { mime: 'image/jpeg', data: u.split(',')[1] }; };
+/** Обработать фото с окном прогресса. → Promise { fin, orig, check, raw } */
+function aiPhoto(file, title) {
+  S.ai = { stage: 0, title: title, preview: URL.createObjectURL(file) }; render();
+  var done = function () { if (S.ai && S.ai.preview) URL.revokeObjectURL(S.ai.preview); S.ai = null; render(); };
+  var stage = function (i) { if (S.ai) { S.ai.stage = i; render(); } };
+  return aiProcess(file, stage).then(function (r) {
+    stage(3);
+    return new Promise(function (res) { run('adminCheckPhoto', [asJpeg(r.processed)], function (chk) { res(chk); }, function () { res(null); }); })
+      .then(function (chk) { done(); return { fin: r.processed, orig: r.original, check: chk, raw: false }; });
+  }, function (e) {
+    if (e.code === 'tools') return new Promise(function (res) { resizeImage(file, function (u) { done(); res({ fin: u, orig: null, check: null, raw: true }); }); });
+    done(); toast(e.code === 'no_face' ? 'Не нашёл лицо на фото — нужен снимок анфас' : 'Не получилось открыть фото'); throw e;
+  });
+}
+/* ИИ для уже загруженного фото: берём файл из Drive, обрабатываем, сохраняем новую версию. */
+function b64File(ph) {
+  var bin = atob(ph.data), arr = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new File([arr], ph.name || 'photo.jpg', { type: ph.mime || 'image/jpeg' });
+}
+function aiTarget(c, url) {
+  if (!c || !url) return null;
+  if (url === c.photo) return { kind: 'me', name: c.name, url: url };
+  var m = family(c).filter(function (x) { return x.photo === url; })[0];
+  return m ? { kind: m.kind, idx: m.idx, name: m.name, url: url } : null;
+}
+function aiFix(c, tg) {
+  if (!c || !tg || S.ai) return;
+  S.lb = null; S.ai = { stage: 0, title: tg.name, preview: '' }; render();
+  run('adminGetPhoto', [tg.url], function (ph) {
+    S.ai = null;
+    aiPhoto(b64File(ph), tg.name).then(function (r) {
+      toast('Сохраняю фото…');
+      if (tg.kind === 'me') {
+        run('adminSetPhoto', [c.row, asJpeg(r.fin), r.raw ? null : { originalUrl: tg.url, check: r.check }], function (res) {
+          c.photo = res && res.url ? res.url : res; if (res && res.photoCheck) c.photoCheck = res.photoCheck; render(); toast('Фото обновлено · ' + aiVerdict(r));
+        });
+      } else {
+        run('adminSetMemberPhoto', [c.row, tg.kind, tg.idx, asJpeg(r.fin)], function (text) {
+          if (tg.kind === 'spouse') c.spouseData = text; else c.kidsData = text; render(); toast(tg.name + ' · ' + aiVerdict(r));
+        });
+      }
+    }, function () {});
+  }, function () { S.ai = null; render(); });
+}
+function aiVerdict(r) {
+  if (r.raw) return 'Фото сохранено без автообработки';
+  if (!r.check) return 'Фото обработано · проверка недоступна';
+  return r.check.issues && r.check.issues.length ? 'ИИ: ' + r.check.issues.map(function (k) { return AI_ISSUES[k] || k; }).join(', ') : 'ИИ: фото подходит';
+}
+function renderAi() {
+  var a = S.ai; if (!a) return '';
+  return '<div class="lb ai-ov" role="dialog" aria-modal="true" aria-label="Обработка фото"><div class="ai-box"><div class="ai-box-h"><b>Обработка фото</b><span class="muted">' + esc(a.title || '') + '</span></div><div class="ai-box-b">' +
+    '<span class="ai-th">' + (a.preview ? '<img src="' + a.preview + '" alt="">' : '') + '</span><span class="ai-stages">' + AI_STAGES.map(function (t, i) {
+      return '<span class="ai-stg' + (i < a.stage ? ' ok' : i === a.stage ? ' on' : '') + '"><i>' + (i < a.stage ? '✓' : '') + '</i>' + t + '</span>';
+    }).join('') + '</span></div></div></div>';
+}
+
 function resizeImage(file, cb) {
   var url = URL.createObjectURL(file), img = new Image();
   img.onload = function () {
@@ -1493,8 +1687,9 @@ function render() {
   if (S.lb) {
     var id = driveId(S.lb.url);
     html += '<div class="lb" data-act="lbClose" role="dialog" aria-modal="true" aria-label="Фото"><figure class="lb-fig"><div class="lb-img"><img src="' + (id ? thumb(S.lb.url, 1600) : esc(S.lb.url)) + '" alt="' + esc(S.lb.name) + '" referrerpolicy="no-referrer"></div>' +
-      '<figcaption><b>' + esc(S.lb.name) + '</b><span class="lb-btns">' + (id ? '<a class="btn pri" href="https://drive.google.com/uc?export=download&id=' + id + '" download>Скачать</a>' : '') + '<button class="btn" data-act="lbClose">Закрыть</button></span></figcaption></figure></div>';
+      '<figcaption><b>' + esc(S.lb.name) + '</b><span class="lb-btns">' + (aiTarget(sel, S.lb.url) ? '<button class="btn ai-btn" data-act="aiFixLb" title="Белый фон и формат 600×600 по правилам DV">' + SPARK + ' Привести к формату</button>' : '') + (id ? '<a class="btn pri" href="https://drive.google.com/uc?export=download&id=' + id + '" download>Скачать</a>' : '') + '<button class="btn" data-act="lbClose">Закрыть</button></span></figcaption></figure></div>';
   }
+  html += renderAi();
   document.getElementById('app').innerHTML = html;
   if (keep) { var el = document.getElementById(keep); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch (e) {} } }
   syncUrl();
@@ -1764,7 +1959,7 @@ function renderCard(c, y) {
     '<span class="row-tags">' + (s ? pill(s.result || s.status) : '<span class="pill p-none">нет в DV-' + y + '</span>') + '<span class="tag">' + (fam.length ? 'семья · ' + (fam.length + 1) : 'один') + '</span>' +
     (missing ? '<span class="pill" style="background:#fbe3e4;color:#9b2730">нет фото: ' + missing + '</span>' : '<span class="pill p-paid">все фото есть</span>') + '</span></div>' +
     '<div class="head-actions">' + (tg ? '<a class="btn pri" href="' + esc(tg) + '" target="_blank" rel="noopener">Telegram</a>' : '') + (c.email ? '<a class="btn" href="mailto:' + esc(c.email) + '">Email</a>' : '') + '<button class="btn" data-act="copyAll">Скопировать всё</button>' +
-    '<label class="btn file">' + (c.photo ? 'Заменить фото' : 'Загрузить фото') + '<input type="file" accept="image/*" data-act="photo"></label>' + '</div></div>';
+    '<label class="btn file">' + (c.photo ? 'Заменить фото' : 'Загрузить фото') + '<input type="file" accept="image/*,.heic,.heif" data-act="photo"></label>' + (c.photo ? '<button class="btn ai-btn" data-act="aiFix" data-v="' + esc(c.photo) + '" title="ИИ: белый фон и формат 600×600 по правилам DV">' + SPARK + ' AI-формат</button>' : '') + '</div></div>';
 
   if (s) {
     h += '<section class="card pad" style="display:flex;flex-direction:column;gap:16px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap"><h2 class="sec-title" style="font-size:18px">Подача DV-' + y + '</h2><span class="muted">' + (s.date ? 'анкета ' + esc(s.date) : '') + '</span></div>' +
@@ -1799,7 +1994,7 @@ function renderCard(c, y) {
   fam.forEach(function (m) {
     var mt = thumb(m.photo, 120);
     h += '<div class="fam"><span class="av" style="background:' + avColor(m.name) + '">' + esc(initials(m.name)) + (mt ? '<button class="ph-btn" data-act="photoView" data-v="' + esc(m.photo) + '" data-n="' + esc(m.name) + '" aria-label="Открыть фото"><img src="' + mt + '" alt="" referrerpolicy="no-referrer" onerror="this.remove()"></button>' : '') + '</span><span class="t"><b style="font-weight:600">' + esc(m.name) + '</b><span class="muted">' + esc([m.rel, m.dob, m.place].filter(Boolean).join(' · ')) + '</span></span>' +
-      (m.photo ? '<button class="pill p-paid" data-act="photoView" data-v="' + esc(m.photo) + '" data-n="' + esc(m.name) + '" style="border:0;cursor:pointer">фото</button>' : '<span class="pill" style="background:#fbe3e4;color:#9b2730">нет фото</span>') +
+      (m.photo ? '<button class="pill p-paid" data-act="photoView" data-v="' + esc(m.photo) + '" data-n="' + esc(m.name) + '" style="border:0;cursor:pointer">фото</button><button class="ai-chip" data-act="aiFix" data-v="' + esc(m.photo) + '" title="ИИ: белый фон и формат 600×600">' + SPARK + 'AI</button>' : '<span class="pill" style="background:#fbe3e4;color:#9b2730">нет фото</span>') +
       '<span class="acts"><button class="pen" data-act="memEdit" data-kind="' + m.kind + '" data-i="' + m.idx + '" title="Изменить" aria-label="Изменить">' + PEN + '</button><button class="pen del" data-act="memDel" data-kind="' + m.kind + '" data-i="' + m.idx + '" title="Убрать из заявки" aria-label="Убрать из заявки">' + XIC + '</button></span></div>';
     if (S.memDel === m.kind + m.idx) h += '<div class="fam-del"><span style="flex:1">Убрать <b>' + esc(m.name) + '</b> из заявки?</span><button class="btn sm danger" data-act="memDelYes" data-kind="' + m.kind + '" data-i="' + m.idx + '"' + (S.busy ? ' disabled' : '') + '>Убрать</button><button class="btn sm" data-act="memDelNo">Отмена</button></div>';
   });
@@ -1817,7 +2012,8 @@ function renderCard(c, y) {
       '<label class="field">Дата рождения<input id="m-dob" data-act="draft" data-k="dob" value="' + esc(d.dob) + '" placeholder="ДД.ММ.ГГГГ" inputmode="numeric"></label>' +
       '<label class="field">Город рождения<input id="m-city" data-act="draft" data-k="city" value="' + esc(d.city) + '" placeholder="MOSCOW"></label>' +
       '<label class="field">Страна рождения<input id="m-country" data-act="draft" data-k="country" value="' + esc(d.country) + '" placeholder="RUSSIA"></label></div>' +
-      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><label class="btn sm file">' + (d.photo ? 'Фото выбрано ✓' : d.keepPhoto ? 'Заменить фото' : 'Фото (необязательно)') + '<input type="file" accept="image/*" data-act="memberPhoto"></label></div>' +
+      '<div class="fam-ph">' + (d.photo ? '<img src="' + d.photo + '" alt=""><span class="pill ' + (d.check && d.check.issues && d.check.issues.length ? 'p-new' : d.check ? 'p-paid' : 'p-none') + '">' + esc(aiVerdict({ raw: d.raw, check: d.check })) + '</span>' : '') +
+        '<label class="btn sm file">' + (d.photo ? 'Другое фото' : d.keepPhoto ? 'Заменить фото' : 'Фото (необязательно)') + '<input type="file" accept="image/*,.heic,.heif" data-act="memberPhoto"></label><span class="muted" style="font-size:12.5px">ИИ поставит белый фон и подгонит 600×600</span></div>' +
       '<div style="display:flex;gap:8px"><button class="btn pri" data-act="saveMember"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Сохраняю…' : d.idx != null ? 'Сохранить' : 'Добавить в заявку') + '</button><button class="btn" data-act="cancelMember">Отмена</button></div></div>';
   }
   h += '</section></div>';
@@ -1860,6 +2056,8 @@ document.addEventListener('click', function (e) {
   if (a === 'resend') { L.stage = 'start'; sendCode(); return; }
   if (a === 'logout') { e.preventDefault(); logout(); return; }
   if (!S.data) return;
+  if (a === 'aiFix') { e.preventDefault(); aiFix(byKey[S.sel], aiTarget(byKey[S.sel], v)); return; }
+  if (a === 'aiFixLb') { aiFix(byKey[S.sel], aiTarget(byKey[S.sel], S.lb && S.lb.url)); return; }
   if (a === 'photoView') { e.preventDefault(); S.lb = { url: v, name: el.getAttribute('data-n') || '' }; render(); return; }
   if (a === 'lbClose') { if (e.target.closest('.lb-fig') && !e.target.closest('[data-act="lbClose"].btn')) return; S.lb = null; render(); return; }
   if (a === 'passCopy') { var pc = byKey[v]; if (pc) copyText(passRequest(pc), 'запрос'); return; }
@@ -1999,11 +2197,22 @@ document.addEventListener('change', function (e) {
     var ss = el.parentNode.querySelectorAll('select'), pdd = ss[0].value, pmm = ss[1].value, pyy = ss[2].value;
     S.pass.expiry = pdd && pmm && pyy ? ('0' + pdd).slice(-2) + '.' + ('0' + pmm).slice(-2) + '.' + pyy : '';
   }
-  else if (a === 'memberPhoto' && S.fam && el.files[0]) resizeImage(el.files[0], function (u) { S.fam.photo = u; render(); toast('Фото выбрано'); });
-  else if (a === 'photo' && c && el.files[0]) resizeImage(el.files[0], function (u) {
-    toast('Загружаю фото…');
-    run('adminSetPhoto', [c.row, { mime: 'image/jpeg', data: u.split(',')[1] }], function (url) { c.photo = url; render(); toast('Фото сохранено'); });
-  });
+  else if (a === 'memberPhoto' && S.fam && el.files[0]) {
+    var mf = el.files[0], fam = S.fam; el.value = '';
+    aiPhoto(mf, fam.name || (fam.kind === 'spouse' ? 'Супруг(а)' : 'Ребёнок')).then(function (r) {
+      if (S.fam !== fam) return;
+      fam.photo = r.fin; fam.check = r.check; fam.raw = r.raw; render(); toast('Фото готово · ' + aiVerdict(r));
+    }, function () {});
+  }
+  else if (a === 'photo' && c && el.files[0]) {
+    var apf = el.files[0]; el.value = '';
+    aiPhoto(apf, c.name).then(function (r) {
+      toast('Сохраняю фото…');
+      run('adminSetPhoto', [c.row, asJpeg(r.fin), r.raw ? null : { original: asJpeg(r.orig), check: r.check }], function (res) {
+        c.photo = res && res.url ? res.url : res; if (res && res.photoCheck) c.photoCheck = res.photoCheck; render(); toast('Фото сохранено · ' + aiVerdict(r));
+      });
+    }, function () {});
+  }
 });
 document.addEventListener('keydown', function (e) {
   if (e.key === 'Escape' && S.lb) { S.lb = null; render(); return; }

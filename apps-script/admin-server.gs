@@ -103,7 +103,7 @@ function api_(d) {
       adminSetCurrentSeason: adminSetCurrentSeason, adminAddMember: adminAddMember, adminSetPhoto: adminSetPhoto, adminDeleteClient: adminDeleteClient,
       adminUpdateField: adminUpdateField, adminUpdateMember: adminUpdateMember, adminRemoveMember: adminRemoveMember, adminRemoveFromSeason: adminRemoveFromSeason,
       adminSetPassport: adminSetPassport, adminAddPassportScan: adminAddPassportScan,
-      adminScanPassport: adminScanPassport, adminRemovePassportScan: adminRemovePassportScan };
+      adminScanPassport: adminScanPassport, adminRemovePassportScan: adminRemovePassportScan, adminCheckPhoto: adminCheckPhoto, adminGetPhoto: adminGetPhoto, adminSetMemberPhoto: adminSetMemberPhoto };
     const fn = fns[d.action];
     if (!fn) return { ok: false, error: 'Неизвестное действие' };
     API_AUTH_ = true;
@@ -561,8 +561,40 @@ function adminAddMember(row, kind, p) {
   return line;
 }
 
-/** Обновить фото заявителя из админки. */
-function adminSetPhoto(row, photo) {
+/** Отдать фото из Drive в админку (для ИИ-обработки старых фото). */
+function adminGetPhoto(url) {
+  assertOwner_();
+  const id = (String(url || '').match(/[-\w]{25,}/) || [])[0];
+  if (!id) throw new Error('Не нашёл файл фото');
+  const blob = DriveApp.getFileById(id).getBlob();
+  const bytes = blob.getBytes();
+  if (bytes.length > 15 * 1024 * 1024) throw new Error('Фото слишком большое');
+  return { mime: blob.getContentType() || 'image/jpeg', data: Utilities.base64Encode(bytes), name: blob.getName() };
+}
+
+/** Заменить только фото родственника (остальные данные строки не трогаем). */
+function adminSetMemberPhoto(row, kind, idx, photo) {
+  assertOwner_();
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const f = familyCell_(row, kind);
+    idx = Number(idx);
+    if (!(idx >= 0 && idx < f.lines.length)) throw new Error('Не найдено — обновите страницу');
+    const name = f.lines[idx].split(',')[0].trim();
+    const url = savePhotoFile_(photo, name + (kind === 'spouse' ? ' (SPOUSE OF ' : ' (CHILD OF ') + f.applicant + ') DV');
+    f.lines[idx] = /фото:\s*\S*/.test(f.lines[idx]) ? f.lines[idx].replace(/фото:\s*\S*/, 'фото: ' + url) : f.lines[idx] + ', фото: ' + url;
+    return writeFamily_(f, kind, row);
+  } finally { lock.releaseLock(); }
+}
+
+/** ИИ-проверка фото из админки (фото уже обработано в браузере). */
+function adminCheckPhoto(photo) {
+  assertOwner_();
+  return checkPhoto_(photo);
+}
+
+/** Обновить фото заявителя из админки. extra: { original, check } — оригинал и результат ИИ-проверки. */
+function adminSetPhoto(row, photo, extra) {
   assertOwner_();
   row = Number(row);
   const sh = responsesSheet_();
@@ -572,7 +604,19 @@ function adminSetPhoto(row, photo) {
   const name = String(sh.getRange(row, c.name + 1).getDisplayValue());
   const url = savePhotoFile_(photo, name);
   sh.getRange(row, c.photoNew + 1).setValue(url);
-  return url;
+  let meta = '';
+  if (extra && (extra.original || extra.originalUrl || extra.check)) {
+    let cc = c;
+    if (cc.photoCheck === undefined) {
+      try { ensurePassportItems_(openForm_()); SpreadsheetApp.flush(); cc = colIndex_(sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0]); } catch (e) { /* колонка появится позже */ }
+    }
+    if (cc.photoCheck !== undefined) {
+      const orig = extra.original ? savePhotoFile_(extra.original, name + ' ORIGINAL') : String(extra.originalUrl || '');
+      meta = photoCheckText_(orig, extra.check || null);
+      sh.getRange(row, cc.photoCheck + 1).setValue(meta);
+    }
+  }
+  return extra ? { url: url, photoCheck: meta } : url;
 }
 
 function adminPage_() {
