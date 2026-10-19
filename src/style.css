@@ -463,3 +463,27 @@ button.ai-pic { cursor: zoom-in; }
 .icon-btn.is-danger:hover { border-color: #e6b9bd; color: #b5323b; background: #fbeef0; }
 .icon-btn:focus-visible, .icon-btn:has(input:focus-visible) { outline: none; box-shadow: var(--focus); }
 @media (max-width: 389px) { .ai-tag .ai-tag-t { display: none; } .ai-tag { padding: 3px 6px; } }
+
+/* Кто может участвовать / Какие документы нужны */
+.who-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.who-card { background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 32px; }
+.who-card.is-docs { background: #fff; }
+.who-card h2 { font-size: clamp(26px, 3vw, 34px); }
+.who-lead { margin-top: 6px; color: var(--ink-3); font-size: 16px; }
+.who-list, .docs-list { list-style: none; margin: 24px 0 0; padding: 0; display: grid; gap: 18px; }
+.who-list li, .docs-list li { display: flex; gap: 16px; align-items: flex-start; }
+.who-list h3, .docs-list h3 { font-size: 19px; line-height: 1.25; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.who-list p, .docs-list p { margin-top: 4px; color: var(--ink-2); font-size: 15.5px; }
+.who-ck { flex: none; width: 36px; height: 36px; border-radius: 50%; background: var(--green); color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 17px; }
+.doc-ic { flex: none; width: 44px; height: 44px; border-radius: 12px; background: var(--green-tint); color: var(--green-ink); display: grid; place-items: center; }
+.doc-ic svg { width: 22px; height: 22px; }
+.doc-new { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #fff; background: #b5323b; border-radius: 6px; padding: 2px 8px; }
+.who-cta { grid-column: 1 / -1; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; justify-content: center; text-align: center; margin-top: 4px; }
+.who-cta p { color: var(--ink-2); font-size: 15.5px; }
+@media (max-width: 860px) {
+  .who-grid { grid-template-columns: 1fr; }
+  .who-card { padding: 24px 18px; border-radius: 18px; }
+  .who-list h3, .docs-list h3 { font-size: 18px; }
+  .who-cta { flex-direction: column; gap: 10px; }
+  .who-cta .btn { width: 100%; }
+}
