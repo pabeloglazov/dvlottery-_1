@@ -208,7 +208,11 @@ img { max-width: 100%; display: block; }
 .file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .file-btn:has(input:focus-visible) { box-shadow: var(--focus); }
 .check { display: flex; gap: 10px; align-items: center; cursor: pointer; font-size: 15.5px; }
-.check input { width: 18px; height: 18px; accent-color: var(--green); }
+.check input { appearance: none; -webkit-appearance: none; margin: 0; flex: none; width: 20px; height: 20px; border: 1.5px solid #b9c1d0; border-radius: 6px; background: #fff; display: grid; place-items: center; cursor: pointer; transition: background .15s, border-color .15s; }
+.check input:hover { border-color: var(--green); }
+.check input:checked { background: var(--green); border-color: var(--green); }
+.check input:checked::after { content: ""; width: 5px; height: 10px; border: solid #fff; border-width: 0 2px 2px 0; transform: translateY(-1px) rotate(45deg); }
+.check input:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(46,106,78,.25); }
 
 .review-lead { color: var(--ink-2); margin-bottom: 18px; }
 .review-group { border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin-bottom: 12px; }
