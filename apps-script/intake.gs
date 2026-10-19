@@ -127,7 +127,7 @@ function checkOpenAiKey() {
 
 /* ---------- ИИ-проверка фото на требования DV ---------- */
 const PHOTO_ISSUES = { glasses: 'очки', headwear: 'головной убор', not_frontal: 'не анфас', eyes_closed: 'глаза закрыты', mouth_open: 'открыт рот / улыбка с зубами',
-  shadows: 'тени на лице', blurry: 'размыто', dark: 'темно / пересвет', hair_covers_face: 'волосы закрывают лицо', multiple_people: 'несколько людей', no_face: 'лицо не видно', cut_off: 'голова обрезана' };
+  shadows: 'тени на лице', blurry: 'размыто', dark: 'темно / пересвет', hair_covers_face: 'волосы закрывают лицо', multiple_people: 'несколько людей', no_face: 'лицо не видно', cut_off: 'голова обрезана', cut_source: 'исходник обрезан по краю' };
 
 /** image: {mime, data} — фото уже на белом фоне 600×600. → { ok: bool, issues: [коды] } */
 function checkPhoto_(image) {

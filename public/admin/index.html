@@ -525,7 +525,7 @@ function addToSeason(list, y) {
 var MP_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
 var MP_MODELS = 'https://greencard-pabeloglazov.ru/models/';
 var AI_STAGES = ['Нахожу лицо', 'Убираю фон — делаю белый', 'Кадрирую 600×600 по правилам DV', 'Проверяю требования'];
-var AI_ISSUES = { glasses: 'очки', headwear: 'головной убор', not_frontal: 'не анфас', eyes_closed: 'глаза закрыты', mouth_open: 'открыт рот', shadows: 'тени на лице', blurry: 'размыто', dark: 'темно / пересвет', hair_covers_face: 'волосы закрывают лицо', multiple_people: 'несколько людей', no_face: 'лицо не видно', cut_off: 'голова обрезана' };
+var AI_ISSUES = { glasses: 'очки', headwear: 'головной убор', not_frontal: 'не анфас', eyes_closed: 'глаза закрыты', mouth_open: 'открыт рот', shadows: 'тени на лице', blurry: 'размыто', dark: 'темно / пересвет', hair_covers_face: 'волосы закрывают лицо', multiple_people: 'несколько людей', no_face: 'лицо не видно', cut_off: 'голова обрезана', cut_source: 'исходник обрезан по краю — нужен снимок с запасом' };
 var mpP = null;
 function mpTools() {
   if (!mpP) {
@@ -587,13 +587,43 @@ async function aiProcess(file, onStage) {
   outer: for (var y = 0; y < yLim; y++) for (var x = x0; x <= x1; x++) if (best.a[y * best.w + x] > 0.5) { topY = y / best.h * H; break outer; }
   var chinY = Math.max(bb.originY + bb.height, mouthY + (mouthY - eyeY) * 0.9), headH = Math.max(10, chinY - topY);
   onStage(2); await pause();
-  var s = SIZE * 0.6 / headH, EMIN = SIZE * 0.31, EMAX = SIZE * 0.44;
-  var eyeT = Math.min(EMAX, Math.max(EMIN, Math.max(SIZE * 0.375, (eyeY - topY) * s + SIZE * 0.05)));
-  if (eyeT - (eyeY - topY) * s < SIZE * 0.02) s = (eyeT - SIZE * 0.02) / (eyeY - topY);
+  // Края исходника, в которые упирается человек, уводим за кадр; голова 52–68%, глаза 56–69% от низа, отступ над головой.
+  var at = function (x, y) { return best.a[y * best.w + x] > 0.5; }, touch = { b: false, l: false, r: false };
+  for (var bx = 0; bx < best.w; bx++) if (at(bx, best.h - 1) || at(bx, best.h - 2)) { touch.b = true; break; }
+  for (var by = Math.floor(best.h * 0.2); by < best.h; by++) { if (at(0, by) || at(1, by)) touch.l = true; if (at(best.w - 1, by) || at(best.w - 2, by)) touch.r = true; }
+  var s0 = SIZE * 0.6 / headH, sMax = SIZE * 0.68 / headH, sMin = SIZE * 0.52 / headH, EMIN = SIZE * 0.31, EMAX = SIZE * 0.44, fit = null;
+  for (var si = 0; si <= 24; si++) {
+    var sc = sMin + (sMax - sMin) * si / 24;
+    for (var et = EMIN + 4; et <= EMAX - 4; et += 4) for (var off = -36; off <= 36; off += 6) {
+      var dx = SIZE / 2 + off - eyeX * sc, dy = et - eyeY * sc, top = dy + topY * sc;
+      var gap = (touch.b ? Math.max(0, SIZE - (dy + H * sc)) : 0) + (touch.l ? Math.max(0, dx) : 0) + (touch.r ? Math.max(0, SIZE - (dx + W * sc)) : 0);
+      var topPen = top < SIZE * 0.04 ? (SIZE * 0.04 - top) * 20 : top > SIZE * 0.16 ? (top - SIZE * 0.16) * 2 : 0;
+      var score = gap * 10 + topPen + Math.abs(sc - s0) / s0 * 120 + Math.abs(et - SIZE * 0.375) * 0.15 + Math.abs(off) * 0.4;
+      if (!fit || score < fit.score) fit = { score: score, s: sc, eyeT: et, dx: dx, dy: dy, gap: gap };
+    }
+  }
+  // Срез исходника внутри кадра — мягко растушёвываем в белый; если режет голову — помечаем.
+  var atP = function (x, y) { return best.a[Math.min(best.h - 1, Math.floor(y / H * best.h)) * best.w + Math.min(best.w - 1, Math.floor(x / W * best.w))] > 0.5; };
+  var tLen = function (x, y0, y1) { var n = 0; for (var yy = y0; yy < y1; yy += 2) if (atP(x, yy)) n += 2; return n; };
+  var yc = Math.min(H - 2, Math.max(0, Math.round(chinY))), fs = fit.s;
+  var gL = Math.max(0, fit.dx), gR = Math.max(0, SIZE - (fit.dx + W * fs)), gB = Math.max(0, SIZE - (fit.dy + H * fs));
+  var eL = tLen(1, 0, H) > 0 && gL > 2, eR = tLen(W - 2, 0, H) > 0 && gR > 2, eB = touch.b && gB > 2, minCut = Math.max(8, yc * 0.12);
+  var eT = false; for (var tx = 0; tx < W; tx += 2) if (atP(tx, 1)) { eT = fit.dy > 2; break; }
+  var headCut = (eT && fit.dy > 10) || (eL && gL > 10 && tLen(1, 0, yc) > minCut) || (eR && gR > 10 && tLen(W - 2, 0, yc) > minCut);
+  if (eL || eR || eB || eT) {
+    var pc2 = person.getContext('2d'), fw = Math.round(Math.min(W, H) * 0.06);
+    pc2.globalCompositeOperation = 'destination-out';
+    var fade = function (x0, y0, x1, y1, rx, ry, rw, rh) { var g = pc2.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)'); pc2.fillStyle = g; pc2.fillRect(rx, ry, rw, rh); };
+    if (eL) fade(0, 0, fw, 0, 0, 0, fw, H);
+    if (eR) fade(W, 0, W - fw, 0, W - fw, 0, fw, H);
+    if (eB) fade(0, H, 0, H - fw, 0, H - fw, W, fw);
+    if (eT) fade(0, 0, 0, fw, 0, 0, W, fw);
+    pc2.globalCompositeOperation = 'source-over';
+  }
   var out = cnv(SIZE, SIZE), oc = out.getContext('2d');
   oc.fillStyle = '#fff'; oc.fillRect(0, 0, SIZE, SIZE); oc.imageSmoothingQuality = 'high';
-  oc.drawImage(person, SIZE / 2 - eyeX * s, eyeT - eyeY * s, W * s, H * s);
-  return { original: original, processed: jpegUnder(out, 240 * 1024), head: Math.round(headH * s / SIZE * 100), eyes: Math.round((SIZE - eyeT) / SIZE * 100) };
+  oc.drawImage(person, fit.dx, fit.dy, W * fs, H * fs);
+  return { original: original, processed: jpegUnder(out, 240 * 1024), head: Math.round(headH * fs / SIZE * 100), eyes: Math.round((SIZE - fit.eyeT) / SIZE * 100), cut: headCut };
 }
 var asJpeg = function (u) { return { mime: 'image/jpeg', data: u.split(',')[1] }; };
 /** Обработать фото с окном прогресса. → Promise { fin, orig, check, raw } */
@@ -604,7 +634,10 @@ function aiPhoto(file, title) {
   return aiProcess(file, stage).then(function (r) {
     stage(3);
     return new Promise(function (res) { run('adminCheckPhoto', [asJpeg(r.processed)], function (chk) { res(chk); }, function () { res(null); }); })
-      .then(function (chk) { done(); return { fin: r.processed, orig: r.original, check: chk, raw: false }; });
+      .then(function (chk) {
+        if (r.cut) chk = { ok: false, issues: ((chk && chk.issues) || []).concat(['cut_source']) };
+        done(); return { fin: r.processed, orig: r.original, check: chk, raw: false };
+      });
   }, function (e) {
     if (e.code === 'tools') return new Promise(function (res) { resizeImage(file, function (u) { done(); res({ fin: u, orig: null, check: null, raw: true }); }); });
     done(); toast(e.code === 'no_face' ? 'Не нашёл лицо на фото — нужен снимок анфас' : 'Не получилось открыть фото'); throw e;

@@ -46,11 +46,12 @@ export async function runAiPhoto(file, onStage = () => {}) {
   onStage(3);
   let check = null;
   if (INTAKE_URL) { try { check = await checkPhotoApi(r.processed); } catch { check = null; } }
+  if (r.metrics.cut) check = { ok: false, issues: [...((check && check.issues) || []), "cut_source"] };
   return { fin: r.processed, meta: { orig: r.original, check, metrics: r.metrics } };
 }
 
 // Пункты чек-листа и какие замечания ИИ к ним относятся.
-const GROUPS = [["not_frontal", "no_face", "multiple_people", "cut_off"], ["glasses", "headwear"], ["eyes_closed", "mouth_open"], ["shadows", "dark", "blurry", "hair_covers_face"]];
+const GROUPS = [["not_frontal", "no_face", "multiple_people", "cut_off", "cut_source"], ["glasses", "headwear"], ["eyes_closed", "mouth_open"], ["shadows", "dark", "blurry", "hair_covers_face"]];
 
 const ICONS = {
   replace: <><path d="M3.5 8a4.5 4.5 0 0 1 7.8-3.1L13 6.5" /><path d="M13 2.8v3.7H9.3" /><path d="M12.5 8a4.5 4.5 0 0 1-7.8 3.1L3 9.5" /><path d="M3 13.2V9.5h3.7" /></>,
