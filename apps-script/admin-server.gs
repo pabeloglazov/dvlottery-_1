@@ -102,7 +102,8 @@ function api_(d) {
     const fns = { adminData: adminData, adminSaveSub: adminSaveSub, adminAddToSeason: adminAddToSeason,
       adminSetCurrentSeason: adminSetCurrentSeason, adminAddMember: adminAddMember, adminSetPhoto: adminSetPhoto, adminDeleteClient: adminDeleteClient,
       adminUpdateField: adminUpdateField, adminUpdateMember: adminUpdateMember, adminRemoveMember: adminRemoveMember, adminRemoveFromSeason: adminRemoveFromSeason,
-      adminSetPassport: adminSetPassport, adminAddPassportScan: adminAddPassportScan };
+      adminSetPassport: adminSetPassport, adminAddPassportScan: adminAddPassportScan,
+      adminScanPassport: adminScanPassport, adminRemovePassportScan: adminRemovePassportScan };
     const fn = fns[d.action];
     if (!fn) return { ok: false, error: 'Неизвестное действие' };
     API_AUTH_ = true;
@@ -480,6 +481,37 @@ function adminAddPassportScan(key, rows, photo) {
     before.push(url);
     cell.setValue(before.join('\n'));
     return before.join('\n');
+  } finally { lock.releaseLock(); }
+}
+
+/** Скан + распознавание: скан сохраняется всегда; данные паспорта пишутся сами, если их ещё не было.
+ *  Если в таблице уже другой паспорт — возвращает распознанное, чтобы админ решил, заменять ли. */
+function adminScanPassport(key, rows, photo) {
+  const scans = adminAddPassportScan(key, rows, photo);
+  const out = { scans: scans, parsed: null, applied: false, same: false, passport: null, error: '' };
+  try { out.parsed = recognizePassport_(photo); } catch (e) { out.error = String(e && e.message || e); return out; }
+  const p = out.parsed;
+  if (!p.number || !p.expiry) { out.error = 'Не удалось прочитать данные со скана'; return out; }
+  const sh = responsesSheet_(), c = passportCols_(sh), at = clientRow_(sh, key, rows).row;
+  const cur = String(sh.getRange(at, c.passport + 1).getValue() || '').trim();
+  const ex = parseDob_(p.expiry);
+  const text = passportText_(p.number, p.country || '', ex.getDate(), ex.getMonth() + 1, ex.getFullYear());
+  if (cur === text) { out.same = true; out.passport = cur; return out; }
+  if (!/\d/.test(cur)) { out.passport = adminSetPassport(key, rows, { number: p.number, country: p.country, expiry: p.expiry }); out.applied = true; }
+  else out.passport = cur;
+  return out;
+}
+
+/** Убрать скан из карточки (файл остаётся в папке). */
+function adminRemovePassportScan(key, rows, url) {
+  assertOwner_();
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const sh = responsesSheet_(), c = passportCols_(sh), at = clientRow_(sh, key, rows).row;
+    const cell = sh.getRange(at, c.passportScan + 1);
+    const left = String(cell.getValue() || '').split('\n').map(function (x) { return x.trim(); }).filter(function (x) { return /^https?:/.test(x) && x !== String(url).trim(); });
+    cell.setValue(left.join('\n'));
+    return left.join('\n');
   } finally { lock.releaseLock(); }
 }
 

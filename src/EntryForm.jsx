@@ -146,6 +146,17 @@ async function prepareDoc(file) {
   } finally { URL.revokeObjectURL(url); }
 }
 
+// Распознавание паспорта: скрипт отправляет картинку в ИИ и возвращает номер, страну и срок.
+async function recognizePassport(dataUrl) {
+  const res = await fetch(INTAKE_URL, {
+    method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ action: "recognizePassport", image: { mime: "image/jpeg", data: dataUrl.split(",")[1] } }),
+  });
+  const j = await res.json();
+  if (!j.ok) throw new Error(j.error || "ocr");
+  return j.result;
+}
+
 const passportPayload = (d) => (d.passportNone ? { none: true } : {
   number: d.pnum.replace(/\s+/g, "").toUpperCase(), country: d.pcountry.trim().toUpperCase(),
   expiry: { d: d.pd, m: d.pm, y: d.py },
@@ -215,7 +226,7 @@ async function sendToForm(d) {
 function Field({ id, label, hint, error, children }) {
   return (
     <div className={"field" + (error ? " has-error" : "")}>
-      <label htmlFor={id} className="field-label">{label}</label>
+      {label && <label htmlFor={id} className="field-label">{label}</label>}
       {hint && <p className="field-hint" id={id + "-hint"}>{hint}</p>}
       {children}
       {error && <p className="field-error" role="alert">{error}</p>}
@@ -350,6 +361,8 @@ export default function EntryForm({ lang, t }) {
   const [state, setState] = useState("idle");      // idle | sending | done | error
   const [errMsg, setErrMsg] = useState("");
   const [scanBusy, setScanBusy] = useState("");    // какой скан сейчас читается (PDF)
+  const [ocr, setOcr] = useState({ st: "", v: {} }); // распознавание: "" | busy | ok | fail, v — что заполнил ИИ
+  const [scanOver, setScanOver] = useState(false);
   const [missingPhotos, setMissingPhotos] = useState([]);
   const [last, setLast] = useState(null);          // что отправили — для подсказок после отправки
   const [lastPhoto, setLastPhoto] = useState(null);
@@ -427,9 +440,27 @@ export default function EntryForm({ lang, t }) {
         return n;
       });
       clearErr(k);
+      if (k === "scan1") runOcr(pages[0]);
     } catch { setErrors((e) => ({ ...e, [k]: pdf ? t.scanPdf : t.scanType })); }
     finally { setScanBusy(""); }
   };
+
+  const runOcr = async (img) => {
+    setOcr({ st: "busy", v: {} });
+    try {
+      const r = await recognizePassport(img);
+      if (!r || !r.number || !r.expiry) { setOcr({ st: "fail", v: {} }); return; }
+      const [dd, mm, yy] = r.expiry.split(".");
+      const v = { pnum: r.number, pcountry: r.country || "", pd: String(+dd), pm: String(+mm), py: yy };
+      setD((p) => ({ ...p, pnum: v.pnum, pcountry: v.pcountry || p.pcountry, pd: v.pd, pm: v.pm, py: v.py }));
+      clearErr("pnum", "pcountry", "pexp");
+      setOcr({ st: "ok", v });
+    } catch { setOcr({ st: "fail", v: {} }); }
+  };
+  const aiTag = (...keys) => (ocr.st === "ok" && keys.every((k) => ocr.v[k] && d[k] === ocr.v[k])
+    ? <span className="ai-tag"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1l1.5 4.5L14 7l-4.5 1.5L8 13l-1.5-4.5L2 7l4.5-1.5z" /></svg>{f.passport.aiTag}</span> : null);
+  const pickScan = (k) => (e) => { const file = e.target.files?.[0]; e.target.value = ""; if (file) onScan(k)(file); };
+  const SCAN_ACCEPT = "image/*,.heic,.heif,application/pdf,.pdf";
 
   const submit = async () => {
     setState("sending"); setErrMsg("");
@@ -614,43 +645,68 @@ export default function EntryForm({ lang, t }) {
 
             <section className="sub-block passport-block">
               <h4>{f.passport.title}</h4>
-              <p className="sub-hint">{f.passport.h}</p>
-              <label className="check">
-                <input type="checkbox" checked={d.passportNone} onChange={(e) => { set("passportNone")(e.target.checked); setErrors({}); }} />
-                <span>{f.passport.none}</span>
-              </label>
+              <p className="sub-hint">{f.passport.h} {CAN_UPLOAD && !d.passportNone ? f.passport.aiH : ""}</p>
               {d.passportNone ? <p className="note">{f.passport.noneNote}</p> : (
                 <>
-                  <div className="two-col">
-                    <Field id="pnum" label={f.passport.number} hint={f.passport.numberH} error={errors.pnum}>
-                      <input id="pnum" value={d.pnum} onChange={(e) => set("pnum")(e.target.value.toUpperCase().replace(/\s+/g, ""))} placeholder={f.passport.numberP} autoComplete="off" />
+                  {CAN_UPLOAD && !d.scanLater && (
+                    <Field id="scan1" label="" error={errors.scan1}>
+                      {!d.scan1 ? (
+                        <label
+                          className={"scan-drop" + (scanOver ? " is-over" : "")}
+                          onDragOver={(e) => { e.preventDefault(); setScanOver(true); }}
+                          onDragLeave={() => setScanOver(false)}
+                          onDrop={(e) => { e.preventDefault(); setScanOver(false); const file = e.dataTransfer.files?.[0]; if (file) onScan("scan1")(file); }}
+                        >
+                          <input id="scan1" type="file" accept={SCAN_ACCEPT} onChange={pickScan("scan1")} />
+                          <span className="scan-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V5M7.5 9.5L12 5l4.5 4.5M5 19h14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
+                          <span><b>{scanBusy === "scan1" ? f.passport.reading : f.passport.upload}</b><span>{f.passport.uploadH}</span></span>
+                        </label>
+                      ) : (
+                        <div className="scan-card">
+                          <span className="scan-thumbs">
+                            <span className={"scan-th" + (ocr.st === "busy" ? " is-scan" : "")}><img src={d.scan1} alt="" /></span>
+                            {d.scan2 && <span className="scan-th"><img src={d.scan2} alt="" /><button type="button" className="scan-x" aria-label={f.passport.remove} onClick={() => set("scan2")(null)}>×</button></span>}
+                          </span>
+                          <span className="scan-meta">
+                            {ocr.st === "busy" ? <><b className="is-ai">{f.passport.ocrBusy}</b><span>{f.passport.ocrBusyH}</span></>
+                              : ocr.st === "ok" ? <><b className="is-ok">✓ {f.passport.ocrOk}</b><span>{f.passport.ocrOkH}</span></>
+                              : ocr.st === "fail" ? <><b className="is-warn">{f.passport.ocrFail}</b><span>{f.passport.ocrFailH}</span></>
+                              : <><b className="is-ok">✓ {f.passport.scanYes}</b></>}
+                            <span className="scan-links">
+                              <label className="link">{f.passport.change}<input type="file" accept={SCAN_ACCEPT} onChange={pickScan("scan1")} /></label>
+                              {!d.scan2 && <label className="link">{f.passport.addPage}<input type="file" accept={SCAN_ACCEPT} onChange={pickScan("scan2")} /></label>}
+                              <button type="button" className="link" onClick={() => { set("scan1")(null); set("scan2")(null); setOcr({ st: "", v: {} }); }}>{f.passport.remove}</button>
+                            </span>
+                          </span>
+                        </div>
+                      )}
                     </Field>
-                    <Field id="pcountry" label={f.passport.country} error={errors.pcountry}>
-                      <input id="pcountry" value={d.pcountry} onChange={upper("pcountry")} placeholder={f.passport.countryP} />
-                    </Field>
-                  </div>
-                  <Field id="pd" label={f.passport.expiry} error={errors.pexp}>
-                    <DateInput id="pd" p={d} onChange={(k, v) => set(k)(v)} lang={lang} f={f} keys={["pd", "pm", "py"]} future />
-                  </Field>
-                  {CAN_UPLOAD && (
-                    <div className="scan-row">
-                      {[["scan1", f.passport.scan, f.passport.scanH], ["scan2", f.passport.scan2, f.passport.scan2H]].map(([k, l, h]) => (
-                        <Field key={k} id={k} label={l} hint={h} error={errors[k]}>
-                          <div className="scan-box">
-                            <PhotoBox photo={d[k] && !(k === "scan1" && d.scanLater) ? d[k] : null} onFile={onScan(k)} onRemove={() => set(k)(null)} size={120} t={t} inputId={k} accept="image/*,.heic,.heif,application/pdf,.pdf" dropText={scanBusy === k ? f.passport.reading : f.passport.drop} />
-                          </div>
-                        </Field>
-                      ))}
-                    </div>
                   )}
-                  {CAN_UPLOAD && (
+                  {CAN_UPLOAD && !d.scan1 && (
                     <label className="check">
                       <input type="checkbox" checked={d.scanLater} onChange={(e) => { set("scanLater")(e.target.checked); clearErr("scan1"); }} />
                       <span>{f.passport.scanLater}</span>
                     </label>
                   )}
+                  <div className="two-col">
+                    <Field id="pnum" label={<>{f.passport.number}{aiTag("pnum")}</>} hint={f.passport.numberH} error={errors.pnum}>
+                      <input id="pnum" className={aiTag("pnum") ? "is-auto" : ""} value={d.pnum} onChange={(e) => set("pnum")(e.target.value.toUpperCase().replace(/\s+/g, ""))} placeholder={f.passport.numberP} autoComplete="off" />
+                    </Field>
+                    <Field id="pcountry" label={<>{f.passport.country}{aiTag("pcountry")}</>} error={errors.pcountry}>
+                      <input id="pcountry" className={aiTag("pcountry") ? "is-auto" : ""} value={d.pcountry} onChange={upper("pcountry")} placeholder={f.passport.countryP} />
+                    </Field>
+                  </div>
+                  <Field id="pd" label={<>{f.passport.expiry}{aiTag("pd", "pm", "py")}</>} error={errors.pexp}>
+                    <div className={aiTag("pd", "pm", "py") ? "is-auto" : ""}>
+                      <DateInput id="pd" p={d} onChange={(k, v) => set(k)(v)} lang={lang} f={f} keys={["pd", "pm", "py"]} future />
+                    </div>
+                  </Field>
                 </>
               )}
+              <label className="check">
+                <input type="checkbox" checked={d.passportNone} onChange={(e) => { set("passportNone")(e.target.checked); setErrors({}); }} />
+                <span>{f.passport.none}</span>
+              </label>
             </section>
           </div>
         )}

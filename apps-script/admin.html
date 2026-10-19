@@ -54,6 +54,60 @@ a{color:var(--green)}
 .lb-fig figcaption{display:flex;align-items:center;justify-content:space-between;gap:12px;color:#fff;flex-wrap:wrap}
 .lb-btns{display:flex;gap:8px}
 .pass-scans{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+/* блок загранпаспорта */
+.pp{padding:0;overflow:hidden}
+.pp-h{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line2);flex-wrap:wrap}
+.pp-h h2{margin:0;font-size:17px;font-weight:700}.pp-h .sp{flex:1}
+.pp-st{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;padding:4px 10px 4px 9px;border-radius:999px;white-space:nowrap}
+.pp-st i{width:7px;height:7px;border-radius:50%;background:currentColor}
+.pp-st.ok{background:var(--tint);color:var(--greenInk)}.pp-st.warn{background:#fbf1dc;color:#9a6512}.pp-st.bad{background:#f8e3e5;color:var(--red)}.pp-st.need{background:#eef1f6;color:var(--ink2)}.pp-st.ai{background:#efecfb;color:#5b4bc4}
+.btn.ghost-red{border-color:transparent;background:none;color:var(--red)}.btn.ghost-red:hover{background:#fbeef0}
+.pp-b{display:grid;grid-template-columns:1fr 1fr;gap:20px;padding:18px;align-items:stretch}
+.pp-scans{display:flex;flex-direction:column;gap:10px;min-width:0}
+.pp-grid{display:grid;grid-template-columns:1fr;gap:10px}.pp-grid.two{grid-template-columns:1fr 1fr}
+.pp-th{position:relative;display:block;width:100%;aspect-ratio:1.42;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:#eef2f7;padding:0;cursor:zoom-in}
+.pp-th img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.pp-th .n{position:absolute;left:6px;bottom:6px;background:rgba(20,33,64,.72);color:#fff;font-size:11px;font-weight:600;padding:2px 7px;border-radius:6px}
+.pp-x{position:absolute;right:6px;top:6px;width:24px;height:24px;border-radius:50%;border:0;background:rgba(20,33,64,.72);color:#fff;font-size:15px;line-height:1;display:grid;place-items:center;cursor:pointer;opacity:0;transition:opacity .15s}
+.pp-th:hover .pp-x,.pp-x:focus-visible{opacity:1}
+@media (hover:none){.pp-x{opacity:1}}
+.pp-th.scan::before{content:"";position:absolute;z-index:1;left:0;right:0;height:38%;top:-38%;background:linear-gradient(180deg,rgba(91,75,196,0),rgba(91,75,196,.35));border-bottom:2px solid #5b4bc4;animation:ppScan 1.1s ease-in-out infinite}
+@keyframes ppScan{to{top:100%}}
+.pp-drop{position:relative;cursor:pointer;flex:1;min-height:190px;border-radius:12px;border:1.5px dashed #c3cad8;background:#fafbfd;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--ink3);font-size:13px;text-align:center;padding:16px}
+.pp-drop .ic{width:44px;height:44px;border-radius:12px;background:#fff;border:1px solid var(--line);display:grid;place-items:center;color:var(--green);margin-bottom:4px}
+.pp-drop b{font-size:15px;color:var(--ink)}
+.pp-line{position:relative;cursor:pointer;height:44px;border-radius:10px;border:1.5px dashed #c3cad8;background:#fafbfd;display:flex;align-items:center;justify-content:center;gap:8px;color:var(--ink2);font-size:13.5px;font-weight:600}
+.pp-line small{font-weight:500;color:var(--ink3)}
+.pp-drop input,.pp-line input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.pp-drop:hover,.pp-line:hover,.pp-over{border-color:var(--green)!important;background:#f4f9f6!important;color:var(--green)}
+.pp-data{display:flex;flex-direction:column;min-width:0}
+.pp-r{display:grid;grid-template-columns:110px minmax(0,1fr) auto;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line2);transition:background .6s}
+.pp-r:first-child{padding-top:0}
+.pp-r .k{font-size:13px;color:var(--ink3)}
+.pp-r .v{font-size:16px;font-weight:600;font-variant-numeric:tabular-nums;word-break:break-word}
+.pp-r .v.e{color:#b4bccb;font-weight:500}
+.pp-r .v small{display:block;font-size:12px;font-weight:500;color:var(--ink3)}.pp-r .v small.w{color:#9a6512}
+.pp-r.flash{background:linear-gradient(90deg,#efecfb,rgba(239,236,251,0));border-radius:8px}
+.pp-sk{display:inline-block;height:14px;width:120px;border-radius:6px;background:linear-gradient(90deg,#eef0f6 25%,#e1def5 50%,#eef0f6 75%);background-size:200% 100%;animation:ppSh 1s linear infinite;vertical-align:middle}
+@keyframes ppSh{to{background-position:-200% 0}}
+.pp-cp{width:30px;height:30px;border-radius:8px;border:0;background:none;color:var(--ink3);display:grid;place-items:center}
+.pp-cp:hover{background:#f1f4f8;color:var(--ink)}.pp-cp.ok{color:var(--green)}
+.pp-cp svg{width:16px;height:16px}
+.pp-all{margin-top:auto;padding-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pp-line1{flex:1;min-width:0;font-size:13px;color:var(--ink2);background:#f6f8fb;border-radius:8px;padding:7px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pp-acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pp-warn{margin:14px 18px 0;padding:10px 12px;border-radius:10px;background:#fbf1dc;color:#7a5212;font-size:13.5px}
+.pp-ai{margin:0 18px 16px;padding:10px 12px;border-radius:10px;background:#efecfb;color:#3f3394;font-size:13.5px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.pp-ai .sp{display:none}.pp-ai>span:not(.sp){flex:1 1 260px;min-width:0}.pp-ai svg{width:16px;height:16px;flex:none;color:#5b4bc4}
+.pp-ai.err{background:#fbf1dc;color:#7a5212}.pp-ai.err svg{color:#9a6512}
+.pp-empty{padding:18px;display:flex;flex-direction:column;gap:14px}.pp-empty p{margin:0;color:var(--ink2);max-width:620px}
+.pp-form{padding:18px;display:flex;flex-direction:column;gap:14px}
+.pp-fg{display:grid;grid-template-columns:1.2fr 1fr 1.25fr;gap:10px}
+.pp-f{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--ink3);font-weight:600}
+.pp-f input,.pp-f select{height:40px;border:1px solid var(--line);border-radius:10px;padding:0 10px;font-size:15px;font-weight:500;color:var(--ink);background:#fff;min-width:0}
+.pp-f input:focus,.pp-f select:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px rgba(46,106,78,.15)}
+.pp-ds{display:grid;grid-template-columns:.8fr 1fr 1fr;gap:6px}
+@media (max-width:720px){.pp-b{grid-template-columns:minmax(0,1fr)}.pp-fg{grid-template-columns:minmax(0,1fr)}.pp-drop{min-height:150px}.pp-line small{display:none}.pp-h .sp{flex-basis:100%;height:0}.pp-r{grid-template-columns:96px minmax(0,1fr) auto}}
 .scan-th{position:relative;width:120px;height:84px;border-radius:10px;border:1px solid var(--line);background:#f3f5f8;overflow:hidden;padding:0;cursor:zoom-in}
 .scan-th img{width:100%;height:100%;object-fit:cover;display:block}
 .scan-th span{position:absolute;left:6px;bottom:6px;font-size:11px;font-weight:600;background:rgba(255,255,255,.9);border-radius:6px;padding:1px 6px;color:var(--ink2)}
@@ -361,10 +415,11 @@ function oldKidsNote(c) {
   return t;
 }
 var NO_PASS = 'НЕТ ЗАГРАНПАСПОРТА', PASS_MIN = new Date(2026, 11, 1);
+function passScans(c) { return String(c.passportScan || '').split('\n').map(function (x) { return x.trim(); }).filter(function (x) { return /^https?:/.test(x); }); }
 function passInfo(c) {
   var t = String(c.passport || '').trim();
-  if (t === NO_PASS) return { state: 'none' };
-  if (!/\d/.test(t)) return { state: 'need' };
+  if (t === NO_PASS) return { state: 'none', scans: passScans(c) };
+  if (!/\d/.test(t)) return { state: 'need', scans: passScans(c) };
   var parts = t.split(',').map(function (x) { return x.trim(); });
   var ex = (t.match(/до\s*(\d{2}\.\d{2}\.\d{4})/) || [])[1] || '';
   var m = ex.split('.'), exD = ex ? new Date(+m[2], +m[1] - 1, +m[0]) : null;
@@ -584,39 +639,145 @@ function renderOverview(y) {
   return h;
 }
 
+var SPARK = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1l1.5 4.5L14 7l-4.5 1.5L8 13l-1.5-4.5L2 7l4.5-1.5z"/><path d="M13 11l.6 1.4L15 13l-1.4.6L13 15l-.6-1.4L11 13l1.4-.6z"/></svg>';
+var CPI = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.8"/><path d="M10.5 5.5V3.8A1.3 1.3 0 0 0 9.2 2.5H3.8A1.3 1.3 0 0 0 2.5 3.8v5.4a1.3 1.3 0 0 0 1.3 1.3h1.7"/></svg>';
+var OKI = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>';
+var UPI = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V5M7.5 9.5L12 5l4.5 4.5M5 19h14"/></svg>';
+var TGI = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M14 2.5L1.8 7.3l4 1.4 1.5 4.6 2.2-2.6 3.2 2.4z"/></svg>';
+var MON3 = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+var SCAN_ACCEPT = 'image/*,.heic,.heif,application/pdf,.pdf';
+function passLeft(ex) {
+  var m = String(ex || '').split('.'); if (m.length !== 3) return '';
+  var d = new Date(+m[2], +m[1] - 1, +m[0]), now = new Date();
+  if (d < PASS_MIN) return { w: true, t: d < now ? 'паспорт уже истёк' : 'истекает до подачи (ноябрь 2026) — нужен новый' };
+  var mo = (d.getFullYear() - now.getFullYear()) * 12 + d.getMonth() - now.getMonth() - (d.getDate() < now.getDate() ? 1 : 0);
+  var yy = Math.floor(mo / 12), mm = mo % 12;
+  return { w: false, t: 'ещё ' + (yy ? yy + ' ' + plural(yy, 'год', 'года', 'лет') : '') + (yy && mm ? ' ' : '') + (mm ? mm + ' мес.' : '') };
+}
+function passCp(k, v) { var on = S.copied === k; return '<button class="pp-cp' + (on ? ' ok' : '') + '" data-act="copy" data-k="' + esc(k) + '" data-v="' + esc(v) + '" title="Копировать" aria-label="Копировать">' + (on ? OKI : CPI) + '</button>'; }
+function passDateSel(v) {
+  var p = String(v || '').split('.'), dd = +p[0] || 0, mm = +p[1] || 0, yy = +p[2] || 0, now = new Date().getFullYear();
+  var o = function (val, txt, on) { return '<option value="' + val + '"' + (on ? ' selected' : '') + '>' + txt + '</option>'; };
+  var dS = o('', 'день', !dd), mS = o('', 'месяц', !mm), yS = o('', 'год', !yy);
+  for (var i = 1; i <= 31; i++) dS += o(i, i, i === dd);
+  MON3.forEach(function (m, i) { mS += o(i + 1, m, i + 1 === mm); });
+  for (var y = Math.min(now, yy || now); y <= now + 12; y++) yS += o(y, y, y === yy);
+  return '<span class="pp-ds"><select id="ps-d" data-act="passDate" aria-label="День">' + dS + '</select><select data-act="passDate" aria-label="Месяц">' + mS + '</select><select data-act="passDate" aria-label="Год">' + yS + '</select></span>';
+}
 function renderPassport(c, y) {
-  var P = passInfo(c), tg = tgUrl(c.telegram);
-  if (!passMatters(y) && P.state === 'need') return '';
-  var pillH = P.state === 'ok' ? '<span class="pill p-paid">есть</span>' : P.state === 'expiring' ? '<span class="pill p-new">истекает до подачи</span>' : P.state === 'none' ? '<span class="pill p-nopass">нет загранпаспорта</span>' : '<span class="pill p-new">нужно запросить</span>';
-  var h = '<section class="card pad pass-card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px"><h2 class="sec-title" style="font-size:18px">Загранпаспорт</h2>' + pillH + '</div>';
-  if (S.pass && S.pass.key === c.key) {
+  var P = passInfo(c), tg = tgUrl(c.telegram), busy = S.scanning === c.key, hasData = P.state === 'ok' || P.state === 'expiring';
+  if (!passMatters(y) && P.state === 'need' && !P.scans.length) return '';
+  var st = busy ? '<span class="pp-st ai"><i></i>распознаю скан…</span>'
+    : P.state === 'none' ? '<span class="pp-st bad"><i></i>нет загранпаспорта</span>'
+    : P.state === 'need' ? (P.scans.length ? '<span class="pp-st warn"><i></i>нет данных</span>' : '<span class="pp-st need"><i></i>нужно запросить</span>')
+    : P.state === 'expiring' ? '<span class="pp-st warn"><i></i>истекает до подачи</span>'
+    : P.scans.length ? '<span class="pp-st ok"><i></i>действует</span>' : '<span class="pp-st warn"><i></i>нет скана</span>';
+  var editing = S.pass && S.pass.key === c.key;
+  var btns = '';
+  if (!editing && !busy) {
+    if (P.state === 'need') btns = '<button class="btn sm ghost-red" data-act="passNone">Нет паспорта</button><button class="btn sm" data-act="passEdit">' + PEN.replace('aria-hidden', 'width="14" height="14" aria-hidden') + ' Ввести вручную</button>';
+    else if (hasData) btns = '<button class="btn sm" data-act="passEdit">' + PEN.replace('aria-hidden', 'width="14" height="14" aria-hidden') + ' Изменить</button>';
+  }
+  var h = '<section class="card pp" data-pp="' + esc(c.key) + '"><div class="pp-h"><h2>Загранпаспорт</h2>' + st + '<span class="sp"></span>' + btns + '</div>';
+  if (editing) {
     var d = S.pass;
-    return h + '<div class="form-box" style="margin-top:0"><div class="grid3" style="gap:10px">' +
-      '<label class="field">Номер<input id="ps-number" data-act="passDraft" data-k="number" value="' + esc(d.number) + '" placeholder="751234567"></label>' +
-      '<label class="field">Страна выдачи<input id="ps-country" data-act="passDraft" data-k="country" value="' + esc(d.country) + '" placeholder="RUSSIA"></label>' +
-      '<label class="field">Действует до<input id="ps-expiry" data-act="passDraft" data-k="expiry" value="' + esc(d.expiry) + '" placeholder="ДД.ММ.ГГГГ" inputmode="numeric"></label></div>' +
-      '<div style="display:flex;gap:8px"><button class="btn pri" data-act="passSave"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Сохраняю…' : 'Сохранить') + '</button><button class="btn" data-act="passCancel">Отмена</button></div></div></section>';
+    return h + '<div class="pp-form"><div class="pp-fg">' +
+      '<label class="pp-f">Номер паспорта<input id="ps-number" data-act="passDraft" data-k="number" value="' + esc(d.number) + '" placeholder="751234567" autocomplete="off"></label>' +
+      '<label class="pp-f">Страна выдачи<input id="ps-country" data-act="passDraft" data-k="country" value="' + esc(d.country) + '" placeholder="RUSSIA" autocomplete="off"></label>' +
+      '<div class="pp-f">Действует до' + passDateSel(d.expiry) + '</div></div>' +
+      '<div class="pp-acts"><button class="btn pri" data-act="passSave"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Сохраняю…' : 'Сохранить') + '</button><button class="btn" data-act="passCancel">Отмена</button></div></div></section>';
   }
-  var scanBtn = '<label class="btn sm file">Загрузить скан<input type="file" accept="image/*" data-act="passScan"></label>';
-  if (P.state === 'need') {
-    h += '<p class="muted" style="margin-bottom:12px">С DV-2027 для подачи нужен действующий загранпаспорт основного заявителя: номер, страна выдачи, срок действия и скан страницы с фото.</p>' +
-      '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm pri" data-act="passCopy" data-v="' + esc(c.key) + '">Скопировать запрос</button>' + (tg ? '<a class="btn sm" href="' + esc(tg) + '" target="_blank" rel="noopener">Открыть Telegram</a>' : '') +
-      '<button class="btn sm" data-act="passEdit">Ввести данные</button>' + scanBtn + '<button class="btn sm ghost-danger" data-act="passNone">Нет паспорта</button></div>';
-  } else if (P.state === 'none') {
-    h += '<p class="muted" style="margin-bottom:12px">Клиент сообщил, что загранпаспорта нет. Без него подать на DV-2027 нельзя.</p>' +
-      '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="passEdit">Паспорт появился — ввести</button><button class="btn sm" data-act="passClear">Снять отметку</button></div>';
-  } else {
-    var on = function (k) { return S.copied === k; };
-    h += '<div class="grid3" style="column-gap:24px">' + [['Номер паспорта', P.number], ['Страна выдачи', P.country], ['Действует до', P.expiry]].map(function (f) {
-      return '<div class="frow"><button class="copy' + (on(f[0]) ? ' ok' : '') + '" data-act="copy" data-k="' + esc(f[0]) + '" data-v="' + esc(f[1]) + '"><span style="min-width:0"><span class="k" style="display:block">' + esc(f[0]) + '</span><span class="v">' + esc(f[1] || '—') + '</span></span><span class="c">' + (on(f[0]) ? 'Скопировано' : 'Копировать') + '</span></button></div>';
-    }).join('') + '</div>';
-    if (P.state === 'expiring') h += '<div class="notice amber" style="margin-top:10px"><span>Паспорт истекает раньше подачи (ноябрь 2026) — нужен новый.</span></div>';
-    h += '<div class="pass-scans">' + (P.scans.length ? P.scans.map(function (u, i) {
-      return '<button class="scan-th" data-act="photoView" data-v="' + esc(u) + '" data-n="' + esc(c.name + ' — паспорт, стр. ' + (i + 1)) + '"><img src="' + thumb(u, 300) + '" alt="" referrerpolicy="no-referrer" onerror="this.remove()"><span>скан ' + (i + 1) + '</span></button>';
-    }).join('') : '<span class="pill p-new">скан не загружен</span>') + '</div>' +
-      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn sm" data-act="passEdit">' + PEN.replace('aria-hidden', 'width="14" height="14" aria-hidden') + ' Изменить</button>' + scanBtn + (P.scans.length ? '' : '<button class="btn sm" data-act="passCopy" data-v="' + esc(c.key) + '">Скопировать запрос</button>') + '</div>';
+  var upl = function (cls, inner) { return '<label class="' + cls + '" data-drop="1">' + inner + '<input type="file" accept="' + SCAN_ACCEPT + '" data-act="passScan"></label>'; };
+  if (P.state === 'none' && !busy) {
+    return h + '<div class="pp-empty"><p>Клиент сообщил, что загранпаспорта нет. Без него подать на DV-2027 нельзя — если оформит до конца регистрации, загрузите скан, данные заполнятся сами.</p>' +
+      '<div class="pp-acts">' + upl('btn sm pri', 'Загрузить скан') + '<button class="btn sm" data-act="passEdit">Ввести вручную</button><button class="btn sm" data-act="passClear">Снять отметку</button></div></div>' + passAiBar(c) + '</section>';
   }
-  return h + '</section>';
+  if (P.state === 'expiring' && !busy) h += '<div class="pp-warn">Паспорт истекает раньше подачи (ноябрь 2026) — нужен новый.</div>';
+  // сканы
+  var sc = '';
+  var list = P.scans.slice(), pv = busy && S.scanPreview;
+  if (!list.length && !pv) sc = upl('pp-drop', '<span class="ic">' + UPI + '</span><b>Загрузить скан паспорта</b><span>Нажмите или перетащите фото / PDF сюда<br>номер, страна и срок заполнятся сами</span>');
+  else {
+    var n = list.length + (pv ? 1 : 0);
+    sc = '<div class="pp-grid' + (n > 1 ? ' two' : '') + '">' + list.map(function (u, i) {
+      return '<span class="pp-th" role="button" tabindex="0" data-act="photoView" data-v="' + esc(u) + '" data-n="' + esc(c.name + ' — паспорт, скан ' + (i + 1)) + '"><img src="' + thumb(u, 600) + '" alt="" referrerpolicy="no-referrer" onerror="this.remove()"><span class="n">скан ' + (i + 1) + '</span>' +
+        (busy ? '' : '<button class="pp-x" data-act="passRm" data-v="' + esc(u) + '" title="Убрать скан" aria-label="Убрать скан">×</button>') + '</span>';
+    }).join('') + (pv ? '<span class="pp-th scan"><img src="' + pv + '" alt=""><span class="n">скан ' + n + '</span></span>' : '') + '</div>';
+    if (!busy) sc += upl('pp-line', '<b>+</b> Добавить скан <small>· перетащите фото или PDF</small>');
+  }
+  // данные
+  var fl = S.ppFlash === c.key ? ' flash' : '', lf = passLeft(P.expiry);
+  var row = function (k, label, v, extra) {
+    var val = busy && !hasData ? '<span class="pp-sk"></span>' : v ? esc(v) + (extra || '') : 'не указано';
+    return '<div class="pp-r' + fl + '"><span class="k">' + label + '</span><span class="v' + (v || busy ? '' : ' e') + '">' + val + '</span>' + (v ? passCp(label, v) : '<span></span>') + '</div>';
+  };
+  var dt = '<div class="pp-data">' + row('n', 'Номер', hasData && P.number) + row('c', 'Страна выдачи', hasData && P.country) +
+    row('e', 'Действует до', hasData && P.expiry, lf ? '<small' + (lf.w ? ' class="w"' : '') + '>' + lf.t + '</small>' : '');
+  if (hasData) { var one = P.number + ', ' + P.country + ', до ' + P.expiry; dt += '<div class="pp-all"><span class="pp-line1">' + esc(one) + '</span><button class="btn sm" data-act="copy" data-k="pass-all" data-v="' + esc(one) + '">' + (S.copied === 'pass-all' ? 'Скопировано' : 'Всё строкой') + '</button></div>'; }
+  else if (!busy) dt += '<div class="pp-acts" style="margin-top:auto;padding-top:14px"><button class="btn sm pri" data-act="passCopy" data-v="' + esc(c.key) + '">Скопировать запрос</button>' + (tg ? '<a class="btn sm" href="' + esc(tg) + '" target="_blank" rel="noopener">' + TGI + ' Telegram</a>' : '') + '</div>';
+  dt += '</div>';
+  return h + '<div class="pp-b"><div class="pp-scans">' + sc + '</div>' + dt + '</div>' + passAiBar(c) + '</section>';
+}
+function passAiBar(c) {
+  var a = S.ai; if (!a || a.key !== c.key) return '';
+  return '<div class="pp-ai' + (a.err ? ' err' : '') + '">' + SPARK + '<span>' + a.html + '</span><span class="sp"></span>' + (a.apply ? '<button class="btn sm pri" data-act="aiApply">Заменить данные</button>' : '') +
+    (a.err ? '<button class="btn sm" data-act="passEdit">Ввести вручную</button>' : '') + '<button class="btn sm" data-act="aiOk">Ок</button></div>';
+}
+/* загрузка скана: фото или PDF → JPEG → сервер (сохранить + распознать) */
+var pdfjsP = null;
+function loadPdfjs() {
+  if (!pdfjsP) pdfjsP = import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs').then(function (m) {
+    m.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs'; return m; });
+  return pdfjsP;
+}
+function pdfPages(file, max) {
+  return loadPdfjs().then(function (pdfjs) { return file.arrayBuffer().then(function (buf) { return pdfjs.getDocument({ data: buf }).promise; }); }).then(function (pdf) {
+    var out = [], n = Math.min(max || 2, pdf.numPages), i = 1;
+    var next = function () {
+      if (i > n) return Promise.resolve(out);
+      return pdf.getPage(i++).then(function (page) {
+        var b = page.getViewport({ scale: 1 }), vp = page.getViewport({ scale: Math.min(4, 2200 / Math.max(b.width, b.height)) });
+        var cv = document.createElement('canvas'); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+        var cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+        return page.render({ canvasContext: cx, viewport: vp }).promise.then(function () { out.push(cv.toDataURL('image/jpeg', 0.85)); return next(); });
+      });
+    };
+    return next();
+  });
+}
+function docImage(file) {
+  return new Promise(function (res, rej) {
+    var url = URL.createObjectURL(file), img = new Image();
+    img.onload = function () {
+      var k = Math.min(1, 2200 / Math.max(img.naturalWidth, img.naturalHeight)), cv = document.createElement('canvas');
+      cv.width = Math.round(img.naturalWidth * k); cv.height = Math.round(img.naturalHeight * k);
+      var cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height); cx.drawImage(img, 0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(url); res(cv.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); rej(new Error('img')); };
+    img.src = url;
+  });
+}
+function passUpload(c, file) {
+  if (!c || !file || S.scanning) return;
+  var pdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+  if (!pdf && !/^image\//.test(file.type) && !/\.(heic|heif)$/i.test(file.name)) { toast('Нужно фото или PDF'); return; }
+  S.ai = null; S.pass = null;
+  (pdf ? pdfPages(file, 2) : docImage(file).then(function (u) { return [u]; })).then(function (pages) {
+    var first = pages[0], rest = pages.slice(1), key = c.key;
+    S.scanning = key; S.scanPreview = first; render();
+    run('adminScanPassport', [key, c.rows || [c.row], { mime: 'image/jpeg', data: first.split(',')[1] }], function (r) {
+      c.passportScan = r.scans; if (r.passport != null) c.passport = r.passport;
+      var p = r.parsed, line = p ? esc([p.number, p.country, p.expiry ? 'до ' + p.expiry : ''].filter(Boolean).join(', ')) : '';
+      if (r.error) S.ai = { key: key, err: true, html: '<b>Скан сохранён, но данные не распознались.</b> ' + esc(r.error) };
+      else if (r.applied) { S.ai = { key: key, html: '<b>Распознано и сохранено в таблицу:</b> ' + line + '. Проверьте глазами.' }; S.ppFlash = key; setTimeout(function () { if (S.ppFlash === key) { S.ppFlash = null; render(); } }, 1600); }
+      else if (r.same) S.ai = { key: key, html: 'Скан сохранён · данные совпадают с паспортом ✓' };
+      else S.ai = { key: key, apply: p, html: '<b>На скане другой паспорт:</b> ' + line + '.' };
+      var finish = function () { S.scanning = null; S.scanPreview = null; render(); };
+      if (!rest.length) return finish();
+      run('adminAddPassportScan', [key, c.rows || [c.row], { mime: 'image/jpeg', data: rest[0].split(',')[1] }], function (t) { c.passportScan = t; finish(); }, finish);
+    }, function () { S.scanning = null; S.scanPreview = null; render(); });
+  }, function () { toast(pdf ? 'Не получилось открыть PDF' : 'Не получилось открыть файл'); });
 }
 function renderCard(c, y) {
   var s = sub(c, y), idx = s ? STATUSES.indexOf(s.status) : -1, fam = family(c), seasons = seasonsOf(c);
@@ -742,13 +903,26 @@ document.addEventListener('click', function (e) {
   else if (a === 'inviteAll') { var cy = S.data.current, list = inviteList(cy); if (list.length && confirm('Добавить ' + list.length + ' ' + plural(list.length, 'клиента', 'клиентов', 'клиентов') + ' в DV-' + cy + ' со статусом «Новая»?')) addToSeason(list, cy); }
   else if (a === 'status' && c) setStatus(c, y, v);
   else if (a === 'prev' && c) { var j = STATUSES.indexOf(sub(c, y).status); if (j > 0) setStatus(c, y, STATUSES[j - 1]); }
-  else if (a === 'passEdit' && c) { var pi = passInfo(c); S.pass = { key: c.key, number: pi.number || '', country: pi.country || String(c.birthCountry || '').toUpperCase(), expiry: pi.expiry || '' }; render(); var pn = document.getElementById('ps-number'); if (pn) pn.focus(); }
+  else if (a === 'passEdit' && c) { var pi = passInfo(c); S.ai = null; S.pass = { key: c.key, number: pi.number || '', country: pi.country || String(c.birthCountry || '').toUpperCase(), expiry: pi.expiry || '' }; render(); var pn = document.getElementById('ps-number'); if (pn) pn.focus(); }
+  else if (a === 'aiOk') { S.ai = null; render(); }
+  else if (a === 'aiApply' && c && S.ai && S.ai.apply && !S.busy) {
+    var ap = S.ai.apply; S.busy = true; render();
+    run('adminSetPassport', [c.key, c.rows || [c.row], { number: ap.number, country: ap.country, expiry: ap.expiry }], function (text) {
+      S.busy = false; S.ai = null; c.passport = text; S.ppFlash = c.key; render(); toast('Данные заменены и сохранены');
+      setTimeout(function () { S.ppFlash = null; render(); }, 1600);
+    }, function () { S.busy = false; render(); });
+  }
+  else if (a === 'passRm' && c && !S.busy) {
+    e.stopPropagation();
+    if (!confirm('Убрать этот скан из карточки? Файл останется в папке с фото.')) return;
+    run('adminRemovePassportScan', [c.key, c.rows || [c.row], v], function (t) { c.passportScan = t; render(); toast('Скан убран'); });
+  }
   else if (a === 'passCancel') { S.pass = null; render(); }
   else if (a === 'passSave' && c && S.pass && !S.busy) {
     var pd = S.pass, num = pd.number.replace(/\s+/g, '').toUpperCase();
     if (!/^[A-Z0-9]{5,20}$/.test(num)) { toast('Номер: только латиница и цифры'); return; }
     if (!/^[A-Za-z][A-Za-z .'\-]*$/.test(pd.country.trim())) { toast('Страна латиницей'); return; }
-    if (!/^\d{2}\.\d{2}\.\d{4}$/.test(pd.expiry.trim())) { toast('Срок в формате ДД.ММ.ГГГГ'); return; }
+    if (!/^\d{2}\.\d{2}\.\d{4}$/.test(pd.expiry.trim())) { toast('Выберите день, месяц и год'); return; }
     S.busy = true; render();
     run('adminSetPassport', [c.key, c.rows || [c.row], { number: num, country: pd.country.trim().toUpperCase(), expiry: pd.expiry.trim() }],
       function (text) { S.busy = false; S.pass = null; c.passport = text; render(); toast('Паспорт сохранён'); }, function () { S.busy = false; render(); });
@@ -845,10 +1019,11 @@ document.addEventListener('change', function (e) {
   var el = e.target, a = el.getAttribute('data-act'), c = S.sel && byKey[S.sel];
   if (a === 'draft' && S.fam) S.fam[el.getAttribute('data-k')] = el.value;
   else if (a === 'field' && c) { var p = {}; p[el.getAttribute('data-k')] = el.value.trim(); saveSub(c, S.season, p, 'Сохранено'); }
-  else if (a === 'passScan' && c && el.files[0]) resizeImage(el.files[0], function (u) {
-    toast('Загружаю скан…');
-    run('adminAddPassportScan', [c.key, c.rows || [c.row], { mime: 'image/jpeg', data: u.split(',')[1] }], function (text) { c.passportScan = text; render(); toast('Скан сохранён'); });
-  });
+  else if (a === 'passScan' && c && el.files[0]) { var pf = el.files[0]; el.value = ''; passUpload(c, pf); }
+  else if (a === 'passDate' && S.pass) {
+    var ss = el.parentNode.querySelectorAll('select'), pdd = ss[0].value, pmm = ss[1].value, pyy = ss[2].value;
+    S.pass.expiry = pdd && pmm && pyy ? ('0' + pdd).slice(-2) + '.' + ('0' + pmm).slice(-2) + '.' + pyy : '';
+  }
   else if (a === 'memberPhoto' && S.fam && el.files[0]) resizeImage(el.files[0], function (u) { S.fam.photo = u; render(); toast('Фото выбрано'); });
   else if (a === 'photo' && c && el.files[0]) resizeImage(el.files[0], function (u) {
     toast('Загружаю фото…');
@@ -863,6 +1038,18 @@ document.addEventListener('keydown', function (e) {
     else if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); var c = S.sel && byKey[S.sel]; if (c && !S.busy) saveEdit(c); }
   }
 });
+['dragenter', 'dragover'].forEach(function (t) {
+  document.addEventListener(t, function (e) { var z = e.target.closest && e.target.closest('[data-drop]'); if (!z) return; e.preventDefault(); z.classList.add('pp-over'); });
+});
+document.addEventListener('dragleave', function (e) { var z = e.target.closest && e.target.closest('[data-drop]'); if (z && !z.contains(e.relatedTarget)) z.classList.remove('pp-over'); });
+document.addEventListener('drop', function (e) {
+  var z = e.target.closest && e.target.closest('[data-drop]'); if (!z) return;
+  e.preventDefault(); z.classList.remove('pp-over');
+  var c = S.sel && byKey[S.sel], f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (c && f) passUpload(c, f);
+});
+window.addEventListener('dragover', function (e) { if (e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') !== -1) e.preventDefault(); });
+window.addEventListener('drop', function (e) { if (!(e.target.closest && e.target.closest('[data-drop]'))) e.preventDefault(); });
 if (API && !getToken()) renderLogin(); else load();
 </script>
 </body></html>

@@ -62,6 +62,73 @@ function passportText_(number, country, d, m, y) {
     'до ' + pad(d) + '.' + pad(m) + '.' + String(y || '').slice(0, 4)].join(', ');
 }
 
+/* ---------- распознавание загранпаспорта (OpenAI) ----------
+ * Ключ хранится только в свойствах скрипта: OPENAI_API_KEY (Настройки проекта → Свойства скрипта).
+ * Дневной лимит защищает ключ: адрес веб-приложения публичный. */
+const OCR_MODEL = 'gpt-4o-mini';
+const OCR_DAILY_LIMIT = 300;
+const COUNTRY_FIX_ = { 'RUSSIAN FEDERATION': 'RUSSIA', 'REPUBLIC OF BELARUS': 'BELARUS', 'REPUBLIC OF KAZAKHSTAN': 'KAZAKHSTAN', 'KYRGYZ REPUBLIC': 'KYRGYZSTAN', 'REPUBLIC OF UZBEKISTAN': 'UZBEKISTAN', 'REPUBLIC OF MOLDOVA': 'MOLDOVA', 'REPUBLIC OF ARMENIA': 'ARMENIA', 'REPUBLIC OF TAJIKISTAN': 'TAJIKISTAN', 'REPUBLIC OF AZERBAIJAN': 'AZERBAIJAN', 'UNITED STATES OF AMERICA': 'USA' };
+
+function ocrQuota_() {
+  const props = PropertiesService.getScriptProperties();
+  const k = 'ocr_' + Utilities.formatDate(new Date(), 'America/Los_Angeles', 'yyyyMMdd');
+  const n = Number(props.getProperty(k) || 0);
+  if (n >= OCR_DAILY_LIMIT) throw new Error('Дневной лимит распознавания исчерпан');
+  props.setProperty(k, String(n + 1));
+}
+
+/** images: [{mime, data(base64)}] → { number, country, expiry: 'ДД.ММ.ГГГГ' } (пустые строки, если не прочиталось). */
+function recognizePassport_(images) {
+  const key = PropertiesService.getScriptProperties().getProperty('OPENAI_API_KEY');
+  if (!key) throw new Error('Распознавание не настроено: нет OPENAI_API_KEY');
+  images = (Array.isArray(images) ? images : [images]).filter(function (x) { return x && x.data; }).slice(0, 2);
+  if (!images.length) throw new Error('Нет изображения');
+  images.forEach(function (x) { if (x.data.length > MAX_PHOTO_BYTES * 1.4) throw new Error('Файл слишком большой'); });
+  ocrQuota_();
+  const content = [{ type: 'text', text: 'Read this passport (photo/data page). Return JSON: {"is_passport": bool, "number": "", "country": "", "expiry": ""}. ' +
+    'number = passport number exactly as printed, Latin letters and digits only, no spaces (check against the MRZ). ' +
+    'country = ISSUING country as a short English name in capitals (RUSSIA, BELARUS, KAZAKHSTAN, UKRAINE, UZBEKISTAN, KYRGYZSTAN, ARMENIA...), from the MRZ issuing state if unsure. ' +
+    'expiry = date of expiry as DD.MM.YYYY. Use "" for anything you cannot read with confidence. Never guess.' }];
+  images.forEach(function (x) {
+    const mime = /^image\/(jpeg|png|webp)$/.test(x.mime) ? x.mime : 'image/jpeg';
+    content.push({ type: 'image_url', image_url: { url: 'data:' + mime + ';base64,' + x.data, detail: 'high' } });
+  });
+  const res = UrlFetchApp.fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { Authorization: 'Bearer ' + key },
+    payload: JSON.stringify({ model: OCR_MODEL, temperature: 0, max_tokens: 200, response_format: { type: 'json_object' },
+      messages: [{ role: 'system', content: 'You extract fields from identity documents and answer only with JSON.' }, { role: 'user', content: content }] })
+  });
+  if (res.getResponseCode() !== 200) { console.error('OpenAI ' + res.getResponseCode() + ': ' + res.getContentText().slice(0, 500)); throw new Error('Сервис распознавания недоступен'); }
+  let out = {};
+  try { out = JSON.parse(JSON.parse(res.getContentText()).choices[0].message.content || '{}'); } catch (e) { out = {}; }
+  let number = String(out.number || '').replace(/[\s<]/g, '').toUpperCase();
+  if (!/^[A-Z0-9]{5,20}$/.test(number)) number = '';
+  let country = String(out.country || '').trim().toUpperCase().replace(/[^A-Z .'\-]/g, '').slice(0, 60);
+  country = COUNTRY_FIX_[country] || country;
+  let expiry = String(out.expiry || '').trim();
+  const m = expiry.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})$/);
+  if (m) {
+    const dt = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+    expiry = dt.getDate() === Number(m[1]) && dt.getMonth() === Number(m[2]) - 1 ? ('0' + m[1]).slice(-2) + '.' + ('0' + m[2]).slice(-2) + '.' + m[3] : '';
+  } else expiry = '';
+  return { isPassport: out.is_passport !== false, number: number, country: country, expiry: expiry };
+}
+
+/** Разовый запуск из редактора после добавления ключа: даёт скрипту доступ к интернету и проверяет ключ (должно вернуть «Ключ работает»). */
+function checkOpenAiKey() {
+  const key = PropertiesService.getScriptProperties().getProperty('OPENAI_API_KEY');
+  if (!key) return 'Нет свойства OPENAI_API_KEY';
+  const code = UrlFetchApp.fetch('https://api.openai.com/v1/models', { headers: { Authorization: 'Bearer ' + key }, muteHttpExceptions: true }).getResponseCode();
+  return code === 200 ? 'Ключ работает' : 'OpenAI ответил ' + code + ' — проверьте ключ';
+}
+
+/** Публичное распознавание для анкеты: { action: 'recognizePassport', image: {mime, data} }. */
+function publicRecognize_(d) {
+  try { return { ok: true, result: recognizePassport_(d.image) }; }
+  catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+}
+
 function norm_(s) { return String(s || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
 
 function openForm_() {
@@ -179,6 +246,7 @@ function doGet(e) {
 function doPost(e) {
   try {
     const d = JSON.parse(e.postData.contents || '{}');
+    if (d.action === 'recognizePassport') return json_(publicRecognize_(d)); // распознавание паспорта в анкете
     if (d.action) return json_(api_(d)); // админка на сайте
     if (d.website) return json_({ ok: true }); // ловушка для ботов
 
