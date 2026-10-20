@@ -50,6 +50,37 @@ a{color:var(--green)}
 @keyframes lbIn{from{opacity:0}to{opacity:1}}
 .lb-fig{margin:0;cursor:default;display:flex;flex-direction:column;gap:12px;max-width:min(560px,100%);width:100%}
 .lb-img{background:#fff;border-radius:16px;overflow:hidden;display:grid;place-items:center;min-height:200px}
+.lb-img{position:relative}
+.lbai{position:absolute;inset:0;pointer-events:none;overflow:hidden;border-radius:16px}
+.lbai .beam{position:absolute;left:0;right:0;height:36%;top:-36%;background:linear-gradient(180deg,rgba(124,108,240,0),rgba(124,108,240,.26));border-bottom:2px solid #7c6cf0;box-shadow:0 8px 22px rgba(124,108,240,.45);animation:ppScan 1.5s cubic-bezier(.45,0,.55,1) infinite}
+.lbai .grid{position:absolute;inset:0;background-image:linear-gradient(rgba(124,108,240,.10) 1px,transparent 1px),linear-gradient(90deg,rgba(124,108,240,.10) 1px,transparent 1px);background-size:28px 28px;opacity:0;animation:lbIn .4s ease forwards}
+.lbai .crn{position:absolute;inset:9% 16% 7%;opacity:0;transition:opacity .3s}
+.lbai .crn.on{opacity:1}
+.lbai .crn i{position:absolute;width:26px;height:26px;border:2.5px solid #7c6cf0}
+.lbai .crn i:nth-child(1){left:0;top:0;border-right:0;border-bottom:0;border-radius:8px 0 0 0}
+.lbai .crn i:nth-child(2){right:0;top:0;border-left:0;border-bottom:0;border-radius:0 8px 0 0}
+.lbai .crn i:nth-child(3){left:0;bottom:0;border-right:0;border-top:0;border-radius:0 0 0 8px}
+.lbai .crn i:nth-child(4){right:0;bottom:0;border-left:0;border-top:0;border-radius:0 0 8px 0}
+.lbai .chip{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;align-items:center;gap:9px;white-space:nowrap;max-width:calc(100% - 24px);padding:8px 14px 8px 11px;border-radius:999px;background:rgba(20,24,44,.82);backdrop-filter:blur(8px);color:#fff;font-size:13.5px;font-weight:600;box-shadow:0 10px 24px -10px rgba(0,0,0,.5);animation:lbChip .25s ease}
+.lbai .chip .sp{width:15px;height:15px;border-radius:50%;border:2px solid rgba(255,255,255,.3);border-top-color:#b9afff;animation:aiSpin .8s linear infinite;flex:none}
+.lbai .chip .dots{display:flex;gap:4px;margin-left:2px}
+.lbai .chip .dots b{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.25)}
+.lbai .chip .dots b.on{background:#b9afff}
+.lbai .chip.ok{background:rgba(31,107,72,.92)}
+.lbai .chip.warn{background:rgba(150,98,10,.92)}
+.lbai .chip.err{background:rgba(155,39,48,.92)}
+.lbai .chip svg{width:15px;height:15px;flex:none}
+.lbai .chip span{overflow:hidden;text-overflow:ellipsis}
+.lbai.out{animation:lbOut .5s ease forwards}
+.lb-img.ai-run img{filter:saturate(.8) brightness(.96);transition:filter .3s}
+.lb-img.ai-new img{animation:lbReveal .8s cubic-bezier(.2,.7,.2,1)}
+.lb-img.ai-new::after{content:"";position:absolute;left:0;right:0;height:2px;top:0;background:#7c6cf0;box-shadow:0 0 18px 4px rgba(124,108,240,.55);animation:lbLine .8s cubic-bezier(.2,.7,.2,1) forwards;pointer-events:none}
+.lb-fig.busy .lb-btns{opacity:.45;pointer-events:none}
+.lb-fig.busy .lb-btns [data-act=lbClose]{opacity:1;pointer-events:auto}
+@keyframes lbChip{from{opacity:0;transform:translate(-50%,6px)}to{opacity:1;transform:translate(-50%,0)}}
+@keyframes lbOut{to{opacity:0}}
+@keyframes lbReveal{from{clip-path:inset(0 0 100% 0)}to{clip-path:inset(0 0 0 0)}}
+@keyframes lbLine{from{top:0;opacity:1}90%{opacity:1}to{top:100%;opacity:0}}
 .lb-img img{display:block;max-width:100%;max-height:calc(100vh - 160px);object-fit:contain}
 .lb-fig figcaption{display:flex;align-items:center;justify-content:space-between;gap:12px;color:#fff;flex-wrap:wrap}
 .lb-btns{display:flex;gap:8px;flex-wrap:wrap}
@@ -234,7 +265,7 @@ h1{margin:2px 0 0;font-size:30px;font-weight:800;letter-spacing:-.02em;line-heig
 .hlog-head[aria-expanded="true"]{border-bottom:1px solid var(--line2);border-radius:16px 16px 0 0}
 .hlog-head[aria-expanded="true"] svg{transform:rotate(180deg)}
 .hlog-more{padding:10px 18px 14px}
-@media (max-width:720px){.hlog-head .muted{display:none}.hlog-head h3{flex:1}}
+
 .hlog{display:flex;flex-direction:column}
 .hlog-e{padding:12px 18px;border-bottom:1px solid #f1f3f7;display:flex;flex-direction:column;gap:6px}
 .hlog-e:last-child{border-bottom:0}
@@ -773,16 +804,19 @@ function aiTarget(c, url) {
   var m = family(c).filter(function (x) { return x.photo === url; })[0];
   return m ? { kind: m.kind, idx: m.idx, name: m.name, url: url } : null;
 }
-function aiSave(c, tg, r, srcUrl) {
+function aiSave(c, tg, r, srcUrl, onSaved) {
   toast('Сохраняю фото…');
   if (tg.kind === 'me') {
     var extra = r.raw ? null : (r.fresh ? { original: asJpeg(r.orig), check: r.check } : { originalUrl: srcUrl || tg.url, check: r.check });
     run('adminSetPhoto', [c.row, asJpeg(r.fin), extra], function (res) {
-      c.photo = res && res.url ? res.url : res; if (res && res.photoCheck) c.photoCheck = res.photoCheck; render(); toast('Фото обновлено · ' + aiVerdict(r));
+      c.photo = res && res.url ? res.url : res; if (res && res.photoCheck) c.photoCheck = res.photoCheck;
+      onSaved && onSaved(c.photo); render(); toast('Фото обновлено · ' + aiVerdict(r));
     });
   } else {
     run('adminSetMemberPhoto', [c.row, tg.kind, tg.idx, asJpeg(r.fin)], function (text) {
-      if (tg.kind === 'spouse') c.spouseData = text; else c.kidsData = text; render(); toast(tg.name + ' · ' + aiVerdict(r));
+      if (tg.kind === 'spouse') c.spouseData = text; else c.kidsData = text;
+      var m = family(c).filter(function (x) { return x.kind === tg.kind && x.idx === tg.idx; })[0];
+      onSaved && onSaved(m && m.photo); render(); toast(tg.name + ' · ' + aiVerdict(r));
     });
   }
 }
@@ -793,6 +827,66 @@ function aiFix(c, tg) {
     S.proc = null;
     aiPhoto(b64File(ph), tg.name).then(function (r) { aiSave(c, tg, r); }, function () {});
   }, function () { S.proc = null; overlay(); });
+}
+
+/* ---------- ИИ прямо в просмотрщике фото: луч сканирует снимок, внизу — шаги, потом проявляется результат ---------- */
+var LB_STEPS = ['Ищу лицо', 'Убираю фон', 'Кадрирую 600×600', 'Проверяю по правилам DV'];
+function lbImgCls() { var a = S.lb && S.lb.ai; return 'lb-img' + (a && !a.done ? ' ai-run' : '') + (a && a.reveal ? ' ai-new' : ''); }
+function lbAiHtml() {
+  var a = S.lb && S.lb.ai; if (!a) return '';
+  if (a.done) {
+    var ic = a.kind === 'ok' ? OKI : '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M8 4v5M8 11.8v.2"/></svg>';
+    return '<div class="lbai' + (a.out ? ' out' : '') + '"><div class="chip ' + a.kind + '">' + ic + '<span>' + esc(a.text) + '</span></div></div>';
+  }
+  return '<div class="lbai"><div class="grid"></div><div class="beam"></div><div class="crn' + (a.stage >= 2 ? ' on' : '') + '"><i></i><i></i><i></i><i></i></div>' +
+    '<div class="chip"><span class="sp"></span><span>' + esc(LB_STEPS[Math.min(a.stage, 3)]) + '…</span><span class="dots">' + LB_STEPS.map(function (t, i) { return '<b' + (i <= a.stage ? ' class="on"' : '') + '></b>'; }).join('') + '</span></div></div>';
+}
+function lbPaint(lb) {
+  if (S.lb !== lb) return;
+  var box = document.querySelector('.lb .lb-img'), fig = document.querySelector('.lb .lb-fig'); if (!box) return;
+  box.className = lbImgCls();
+  if (fig) fig.classList.toggle('busy', !!(lb.ai && !lb.ai.done));
+  var img = box.querySelector('img');
+  if (lb.local && img && img.getAttribute('src') !== lb.local) img.setAttribute('src', lb.local);
+  var old = box.querySelector('.lbai'), html = lbAiHtml();
+  if (old && old.outerHTML === html) return;
+  if (old) old.remove();
+  if (html) box.insertAdjacentHTML('beforeend', html);
+}
+function lbAi(c, tg, file) {
+  var lb = S.lb; if (!c || !tg || !lb) return;
+  var fresh = !!file;
+  lb.ai = { stage: 0 };
+  if (file) lb.local = URL.createObjectURL(file);
+  lbPaint(lb);
+  var stage = function (i) { if (lb.ai && !lb.ai.done) { lb.ai.stage = i; lbPaint(lb); } };
+  var finish = function (kind, text, keep) {
+    lb.ai = { done: true, kind: kind, text: text, reveal: kind !== 'err' && !!keep };
+    lbPaint(lb);
+    setTimeout(function () { if (lb.ai && lb.ai.done) { lb.ai.reveal = false; lb.ai.out = true; lbPaint(lb); } }, 3800);
+    setTimeout(function () { if (lb.ai && lb.ai.out) { lb.ai = null; lbPaint(lb); } }, 4400);
+  };
+  var fail = function (e) {
+    if (file && lb.local && lb.local.indexOf('blob:') === 0) { URL.revokeObjectURL(lb.local); lb.local = null; lbPaint(lb); }
+    finish('err', e && e.code === 'no_face' ? 'Не нашёл лицо — нужен снимок анфас' : 'Не получилось обработать фото');
+  };
+  var go = function (f) {
+    aiProcess(f, stage).then(function (r) {
+      stage(3);
+      run('adminCheckPhoto', [asJpeg(r.processed)], function (chk) { next(chk); }, function () { next(null); });
+      function next(chk) {
+        if (r.cut) chk = { ok: false, issues: ((chk && chk.issues) || []).concat(['cut_source']) };
+        var res = { fin: r.processed, orig: r.original, check: chk, raw: false, fresh: fresh };
+        if (lb.local && lb.local.indexOf('blob:') === 0) URL.revokeObjectURL(lb.local);
+        lb.local = r.processed;
+        var v = aiVerdict(res).replace(/^ИИ:\s*/, '');
+        finish(chk && chk.ok === false ? 'warn' : 'ok', chk ? (chk.ok === false ? v : 'Готово · фото подходит') : 'Готово · белый фон, 600×600', true);
+        aiSave(c, tg, res, null, function (url) { if (S.lb === lb && url) { lb.url = url; } });
+      }
+    }, fail);
+  };
+  if (file) go(file);
+  else run('adminGetPhoto', [tg.url], function (ph) { go(b64File(ph)); }, fail);
 }
 /* ---------- ручное кадрирование: двигать/масштабировать, ИИ собирает 600×600 по выбранному кадру ---------- */
 function origUrlOf(c) { return (String(c.photoCheck || '').match(/оригинал:\s*(https?:\S+)/) || [])[1] || ''; }
@@ -940,7 +1034,7 @@ function render() {
   var pos = keep && document.activeElement.selectionStart;
   if (S.lb) {
     var id = driveId(S.lb.url);
-    html += '<div class="lb" data-act="lbClose" role="dialog" aria-modal="true" aria-label="Фото"><figure class="lb-fig"><div class="lb-img"><img src="' + (id ? thumb(S.lb.url, 1600) : esc(S.lb.url)) + '" alt="' + esc(S.lb.name) + '" referrerpolicy="no-referrer"></div>' +
+    html += '<div class="lb" data-act="lbClose" role="dialog" aria-modal="true" aria-label="Фото"><figure class="lb-fig' + (S.lb.ai && !S.lb.ai.done ? ' busy' : '') + '"><div class="' + lbImgCls() + '"><img src="' + (S.lb.local || (id ? thumb(S.lb.url, 1600) : esc(S.lb.url))) + '" alt="' + esc(S.lb.name) + '" referrerpolicy="no-referrer">' + lbAiHtml() + '</div>' +
       '<figcaption><b>' + esc(S.lb.name) + '</b><span class="lb-btns">' + (aiTarget(sel, S.lb.url) ?
         '<button class="btn lb-ic" data-act="cropOpen" title="Кадрировать вручную" aria-label="Кадрировать вручную">' + CROPI + '</button>' +
         '<button class="btn lb-ic ai-btn" data-act="aiFixLb" title="ИИ: белый фон и формат 600×600 по правилам DV" aria-label="Привести к формату DV">' + SPARK + '</button>' +
@@ -1058,7 +1152,7 @@ function renderOverview(y) {
     view: 'invite', meta: function (c) { return seasonsOf(c).map(function (s) { return 'DV-' + s; }).join(', ') + ' · ' + (c.telegram || ''); },
     html: function (c) { return '<button class="btn sm soft" data-act="add" data-y="' + S.data.current + '" data-v="' + esc(c.key) + '">В DV-' + S.data.current + '</button>'; } });
   if (!S.histAll) loadHist('', true);
-  h += '</div>' + histSection('all', 'Последние изменения', 'по всем клиентам', S.histAll, true, 'margin-top:16px');
+  h += '</div>' + histSection('all', 'Последние изменения', '', S.histAll, true, 'margin-top:16px');
   return h;
 }
 
@@ -1303,7 +1397,7 @@ function renderCard(c, y) {
     }).join('') +
     '</div></section>';
   if (!S.hist || S.hist.key !== c.key) loadHist(c.key, true);
-  h += histSection('card', 'История изменений', 'что меняли в админке · можно откатить', S.hist && S.hist.key === c.key ? S.hist : null, false);
+  h += histSection('card', 'История изменений', '', S.hist && S.hist.key === c.key ? S.hist : null, false);
   var nRows = (c.rows || [c.row]).length;
   h += S.del === c.key
     ? '<section class="card pad danger-box"><b>Удалить ' + esc(c.name) + '?</b><span class="muted">Из таблицы удалятся ' + (nRows > 1 ? 'все его анкеты (' + nRows + ' ' + plural(nRows, 'строка', 'строки', 'строк') + ')' : 'его анкета') + ' и все отметки по сезонам. Отменить нельзя. Фото в папке на Drive останутся.</span>' +
@@ -1332,7 +1426,7 @@ document.addEventListener('click', function (e) {
   if (a === 'cropAuto' && S.crop) { S.crop.rect = Object.assign({}, S.crop.prep.rect); cropLayout(); return; }
   if (a === 'cropApply') { cropApply(); return; }
   if (a === 'aiFix') { e.preventDefault(); aiFix(byKey[S.sel], aiTarget(byKey[S.sel], v)); return; }
-  if (a === 'aiFixLb') { aiFix(byKey[S.sel], aiTarget(byKey[S.sel], S.lb && S.lb.url)); return; }
+  if (a === 'aiFixLb') { if (S.lb && !(S.lb.ai && !S.lb.ai.done)) lbAi(byKey[S.sel], aiTarget(byKey[S.sel], S.lb.url), null); return; }
   if (a === 'histRevert') { histRevert(v); return; }
   if (a === 'histFold') { HFOLD[v] = histOpen(v); try { localStorage.setItem('dv_hist_fold', JSON.stringify(HFOLD)); } catch (e2) {} render(); return; }
   if (a === 'histMore') { S.histMore = v; render(); return; }
@@ -1483,7 +1577,7 @@ document.addEventListener('change', function (e) {
   }
   else if (a === 'lbReplace' && c && el.files[0] && S.lb) {
     var rf = el.files[0], rtg = aiTarget(c, S.lb.url); el.value = '';
-    if (rtg) { S.lb = null; render(); aiPhoto(rf, rtg.name).then(function (r) { r.fresh = true; aiSave(c, rtg, r); }, function () {}); }
+    if (rtg && !(S.lb.ai && !S.lb.ai.done)) lbAi(c, rtg, rf);
   }
   else if (a === 'memberPhoto' && S.fam && el.files[0]) {
     var mf = el.files[0], fam = S.fam; el.value = '';
