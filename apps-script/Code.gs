@@ -1481,6 +1481,15 @@ h1{margin:2px 0 0;font-size:30px;font-weight:800;letter-spacing:-.02em;line-heig
 .head-main{flex:1;min-width:220px;display:flex;flex-direction:column;gap:6px}
 .head-actions{display:flex;gap:8px;flex-wrap:wrap}
 .steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.hlog-head{display:flex;align-items:center;gap:10px;width:100%;padding:14px 18px;border:0;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer;border-radius:16px}
+.hlog-head h3{margin:0;font-size:16px;font-weight:700}
+.hlog-head .cnt{min-width:22px;height:22px;padding:0 7px;border-radius:999px;background:#eef1f6;color:var(--ink2);font-size:12px;font-weight:700;display:inline-grid;place-items:center;font-variant-numeric:tabular-nums}
+.hlog-head .muted{flex:1;text-align:right}
+.hlog-head svg{flex:none;color:var(--ink3);transition:transform .15s}
+.hlog-head[aria-expanded="true"]{border-bottom:1px solid var(--line2);border-radius:16px 16px 0 0}
+.hlog-head[aria-expanded="true"] svg{transform:rotate(180deg)}
+.hlog-more{padding:10px 18px 14px}
+@media (max-width:720px){.hlog-head .muted{display:none}.hlog-head h3{flex:1}}
 .hlog{display:flex;flex-direction:column}
 .hlog-e{padding:12px 18px;border-bottom:1px solid #f1f3f7;display:flex;flex-direction:column;gap:6px}
 .hlog-e:last-child{border-bottom:0}
@@ -1681,6 +1690,22 @@ function shortVal(v) {
   v = v.replace(/https?:\/\/\S+/g, function (u) { return '\u0001' + u + '\u0002'; });
   var t = esc(v.length > 260 ? v.slice(0, 260) + '…' : v);
   return t.replace(/\u0001(\S+?)\u0002/g, function (m, u) { return '<a href="' + u + '" target="_blank" rel="noopener">файл</a>'; }).replace(/\n/g, '<br>');
+}
+
+var HFOLD = (function () { try { return JSON.parse(localStorage.getItem('dv_hist_fold') || '{}'); } catch (e) { return {}; } })();
+function histOpen(slot) { return !HFOLD[slot]; }
+function histSection(slot, title, note, st, withName, style) {
+  var open = histOpen(slot), n = st && st.items ? st.items.length : null;
+  var cnt = n === null ? '…' : (n >= (slot === 'card' ? 100 : 25) ? n + '+' : String(n));
+  var h = '<section class="card"' + (style ? ' style="' + style + '"' : '') + '><button class="hlog-head" data-act="histFold" data-v="' + slot + '" aria-expanded="' + open + '"><h3>' + title + '</h3><span class="cnt" title="Записей в истории">' + cnt + '</span><span class="muted">' + note + '</span>' +
+    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>';
+  if (open) {
+    var lim = S.histMore === slot ? 1e9 : 5;
+    var cut = st && st.items && st.items.length > lim ? { key: st.key, items: st.items.slice(0, lim), loading: st.loading } : st;
+    h += histList(cut, withName);
+    if (cut !== st) h += '<div class="hlog-more"><button class="btn sm" data-act="histMore" data-v="' + slot + '">Показать все ' + st.items.length + '</button></div>';
+  }
+  return h + '</section>';
 }
 function histList(st, withName) {
   if (!st || (!st.items && st.loading)) return '<div class="empty" style="padding:18px;text-align:left">Загружаю…</div>';
@@ -2288,7 +2313,7 @@ function renderOverview(y) {
     view: 'invite', meta: function (c) { return seasonsOf(c).map(function (s) { return 'DV-' + s; }).join(', ') + ' · ' + (c.telegram || ''); },
     html: function (c) { return '<button class="btn sm soft" data-act="add" data-y="' + S.data.current + '" data-v="' + esc(c.key) + '">В DV-' + S.data.current + '</button>'; } });
   if (!S.histAll) loadHist('', true);
-  h += '</div><section class="card" style="margin-top:16px"><div class="sec-head"><h3>Последние изменения</h3><span class="muted">по всем клиентам</span></div>' + histList(S.histAll, true) + '</section>';
+  h += '</div>' + histSection('all', 'Последние изменения', 'по всем клиентам', S.histAll, true, 'margin-top:16px');
   return h;
 }
 
@@ -2533,7 +2558,7 @@ function renderCard(c, y) {
     }).join('') +
     '</div></section>';
   if (!S.hist || S.hist.key !== c.key) loadHist(c.key, true);
-  h += '<section class="card"><div class="sec-head"><h3>История изменений</h3><span class="muted">что меняли в админке · можно откатить</span></div>' + histList(S.hist && S.hist.key === c.key ? S.hist : null) + '</section>';
+  h += histSection('card', 'История изменений', 'что меняли в админке · можно откатить', S.hist && S.hist.key === c.key ? S.hist : null, false);
   var nRows = (c.rows || [c.row]).length;
   h += S.del === c.key
     ? '<section class="card pad danger-box"><b>Удалить ' + esc(c.name) + '?</b><span class="muted">Из таблицы удалятся ' + (nRows > 1 ? 'все его анкеты (' + nRows + ' ' + plural(nRows, 'строка', 'строки', 'строк') + ')' : 'его анкета') + ' и все отметки по сезонам. Отменить нельзя. Фото в папке на Drive останутся.</span>' +
@@ -2564,6 +2589,8 @@ document.addEventListener('click', function (e) {
   if (a === 'aiFix') { e.preventDefault(); aiFix(byKey[S.sel], aiTarget(byKey[S.sel], v)); return; }
   if (a === 'aiFixLb') { aiFix(byKey[S.sel], aiTarget(byKey[S.sel], S.lb && S.lb.url)); return; }
   if (a === 'histRevert') { histRevert(v); return; }
+  if (a === 'histFold') { HFOLD[v] = histOpen(v); try { localStorage.setItem('dv_hist_fold', JSON.stringify(HFOLD)); } catch (e2) {} render(); return; }
+  if (a === 'histMore') { S.histMore = v; render(); return; }
   if (a === 'photoView') { e.preventDefault(); S.lb = { url: v, name: el.getAttribute('data-n') || '' }; render(); return; }
   if (a === 'lbClose') { if (e.target.closest('.lb-fig') && !e.target.closest('[data-act="lbClose"].btn')) return; S.lb = null; render(); return; }
   if (a === 'passCopy') { var pc = byKey[v]; if (pc) copyText(passRequest(pc), 'запрос'); return; }
@@ -2576,7 +2603,7 @@ document.addEventListener('click', function (e) {
     run('adminSetCurrentSeason', [Number(v)], function (n) { S.data.current = n; S.season = n; S.view = 'all'; render(); toast('Текущий сезон: DV-' + n); });
   }
   else if (a === 'view') { S.view = v; S.sel = null; S.fam = null; render(); window.scrollTo(0, 0); }
-  else if (a === 'open') { S.pass = null; S.sel = v; S.fam = null; S.del = null; S.unseason = null; S.lb = null; S.edit = null; S.memDel = null; render(); window.scrollTo(0, 0); }
+  else if (a === 'open') { S.histMore = null; S.pass = null; S.sel = v; S.fam = null; S.del = null; S.unseason = null; S.lb = null; S.edit = null; S.memDel = null; render(); window.scrollTo(0, 0); }
   else if (a === 'close') { S.sel = null; S.fam = null; render(); }
   else if (a === 'add') { var cl = byKey[v]; if (cl) addToSeason([cl], Number(el.getAttribute('data-y')) || y); }
   else if (a === 'inviteAll') { var cy = S.data.current, list = inviteList(cy); if (list.length && confirm('Добавить ' + list.length + ' ' + plural(list.length, 'клиента', 'клиентов', 'клиентов') + ' в DV-' + cy + ' со статусом «Новая»?')) addToSeason(list, cy); }
