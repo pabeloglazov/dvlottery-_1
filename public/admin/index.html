@@ -83,6 +83,7 @@ a{color:var(--green)}
 .crop-metrics .ok{background:var(--tint);color:var(--greenInk)}.crop-metrics .bad{background:#fbe3e4;color:#9b2730}
 #cropZoom{width:100%;accent-color:var(--green)}
 .crop-acts{display:flex;gap:8px;align-items:center}
+.crop-zoom{display:flex;gap:8px;align-items:center}.crop-zoom .btn{width:36px;padding:0;font-size:18px;flex:none}
 .crop-chip{padding:2px 6px}
 .ai-chip{display:inline-flex;align-items:center;gap:3px;border:1px solid #d9d3f5;background:#f4f2fd;color:#5b4bc4;border-radius:999px;padding:2px 8px;font-size:11.5px;font-weight:700;cursor:pointer}
 .ai-chip svg,.ai-btn svg{width:12px;height:12px}
@@ -604,57 +605,51 @@ async function aiPrepare(file, onStage) {
   var chinY = Math.max(bb.originY + bb.height, mouthY + (mouthY - eyeY) * 0.9), headH = Math.max(10, chinY - topY);
   onStage(2); await pause();
   // Авто-кадр: края исходника, в которые упирается человек, — за кадром; голова 52–68%, глаза 56–69% от низа, отступ над головой.
-  var at = function (x, y) { return best.a[y * best.w + x] > 0.5; }, touch = { b: false, l: false, r: false };
-  for (var bx = 0; bx < best.w; bx++) if (at(bx, best.h - 1) || at(bx, best.h - 2)) { touch.b = true; break; }
-  for (var by = Math.floor(best.h * 0.2); by < best.h; by++) { if (at(0, by) || at(1, by)) touch.l = true; if (at(best.w - 1, by) || at(best.w - 2, by)) touch.r = true; }
-  var s0 = SIZE * 0.6 / headH, sMax = SIZE * 0.68 / headH, sMin = SIZE * 0.52 / headH, EMIN = SIZE * 0.31, EMAX = SIZE * 0.44, fit = null;
+  var edges = findEdges(best, W, H);
+  var s0 = SIZE * 0.6 / headH, sMax = SIZE * 0.69 / headH, sMin = SIZE * 0.52 / headH, EMIN = SIZE * 0.31, EMAX = SIZE * 0.44, fit = null;
   for (var si = 0; si <= 24; si++) {
     var sc = sMin + (sMax - sMin) * si / 24;
     for (var et = EMIN + 4; et <= EMAX - 4; et += 4) for (var off = -36; off <= 36; off += 6) {
       var dx = SIZE / 2 + off - eyeX * sc, dy = et - eyeY * sc, top = dy + topY * sc;
-      var gap = (touch.b ? Math.max(0, SIZE - (dy + H * sc)) : 0) + (touch.l ? Math.max(0, dx) : 0) + (touch.r ? Math.max(0, SIZE - (dx + W * sc)) : 0);
+      var gap = (edges.bY !== null ? Math.max(0, SIZE - (dy + edges.bY * sc)) : 0) + (edges.l ? Math.max(0, dx) : 0) + (edges.r ? Math.max(0, SIZE - (dx + W * sc)) : 0);
       var topPen = top < SIZE * 0.04 ? (SIZE * 0.04 - top) * 20 : top > SIZE * 0.16 ? (top - SIZE * 0.16) * 2 : 0;
       var score = gap * 10 + topPen + Math.abs(sc - s0) / s0 * 120 + Math.abs(et - SIZE * 0.375) * 0.15 + Math.abs(off) * 0.4;
       if (!fit || score < fit.score) fit = { score: score, s: sc, dx: dx, dy: dy };
     }
   }
-  return { original: original, W: W, H: H, person: person, mask: best, eyeX: eyeX, eyeY: eyeY, topY: topY, chinY: chinY, headH: headH,
+  return { original: original, W: W, H: H, person: person, mask: best, edges: edges, eyeX: eyeX, eyeY: eyeY, topY: topY, chinY: chinY, headH: headH,
     rect: { x: -fit.dx / fit.s, y: -fit.dy / fit.s, size: SIZE / fit.s } };
 }
-/** Сборка 600×600 по квадрату rect (в пикселях исходника). Срезы исходника внутри кадра мягко растушёвываются. */
+/* Срезы: край исходника, в который упирается человек, или ровная горизонтальная граница внутри фото (фото уже обрезали). */
+function findEdges(m, W, H) {
+  var at = function (x, y) { return m.a[y * m.w + x] > 0.5; }, e = { bY: null, l: false, r: false, t: false }, x, y;
+  for (x = 0; x < m.w; x++) if (at(x, m.h - 1) || at(x, m.h - 2)) { e.bY = H; break; }
+  if (e.bY === null) for (y = m.h - 1; y > m.h * 0.5; y--) { var n = 0; for (x = 0; x < m.w; x++) if (at(x, y)) n++; if (n > 0) { if (n / m.w >= 0.3) e.bY = (y + 1) / m.h * H; break; } }
+  for (y = Math.floor(m.h * 0.2); y < m.h; y++) { if (at(0, y) || at(1, y)) e.l = true; if (at(m.w - 1, y) || at(m.w - 2, y)) e.r = true; }
+  for (x = 0; x < m.w; x++) if (at(x, 0) || at(x, 1)) { e.t = true; break; }
+  return e;
+}
+/** Сколько срезов видно в кадре rect (px кадра 600). */
+function cutGaps(p, rect) {
+  var fs = 600 / rect.size, dx = -rect.x * fs, dy = -rect.y * fs, e = p.edges;
+  return { b: e.bY !== null ? 600 - (dy + e.bY * fs) : 0, l: e.l ? dx : 0, r: e.r ? 600 - (dx + p.W * fs) : 0, t: e.t ? dy : 0 };
+}
+function hasCut(p, rect) { var g = cutGaps(p, rect); return g.b > 6 || g.l > 6 || g.r > 6 || g.t > 6; }
+/** Сборка 600×600 по квадрату rect (в пикселях исходника), без растушёвки. */
 function aiRender(p, rect) {
-  var SIZE = 600, W = p.W, H = p.H, best = p.mask, fs = SIZE / rect.size, dx = -rect.x * fs, dy = -rect.y * fs;
-  var atP = function (x, y) { return best.a[Math.min(best.h - 1, Math.floor(y / H * best.h)) * best.w + Math.min(best.w - 1, Math.floor(x / W * best.w))] > 0.5; };
-  var tLen = function (x, y0, y1) { var n = 0; for (var yy = y0; yy < y1; yy += 2) if (atP(x, yy)) n += 2; return n; };
-  var bTouch = false; for (var bx = 0; bx < W; bx += 2) if (atP(bx, H - 2)) { bTouch = true; break; }
-  var yc = Math.min(H - 2, Math.max(0, Math.round(p.chinY)));
-  var gL = Math.max(0, dx), gR = Math.max(0, SIZE - (dx + W * fs)), gB = Math.max(0, SIZE - (dy + H * fs));
-  var eL = tLen(1, 0, H) > 0 && gL > 2, eR = tLen(W - 2, 0, H) > 0 && gR > 2, eB = bTouch && gB > 2, minCut = Math.max(8, yc * 0.12);
-  var eT = false; for (var tx = 0; tx < W; tx += 2) if (atP(tx, 1)) { eT = dy > 2; break; }
-  var headCut = (eT && dy > 10) || (eL && gL > 10 && tLen(1, 0, yc) > minCut) || (eR && gR > 10 && tLen(W - 2, 0, yc) > minCut);
-  var layer = p.person;
-  if (eL || eR || eB || eT) {
-    layer = cnv(W, H); var pc2 = layer.getContext('2d'), fw = Math.round(Math.min(W, H) * 0.06);
-    pc2.drawImage(p.person, 0, 0); pc2.globalCompositeOperation = 'destination-out';
-    var fade = function (x0, y0, x1, y1, rx, ry, rw, rh) { var g = pc2.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)'); pc2.fillStyle = g; pc2.fillRect(rx, ry, rw, rh); };
-    if (eL) fade(0, 0, fw, 0, 0, 0, fw, H);
-    if (eR) fade(W, 0, W - fw, 0, W - fw, 0, fw, H);
-    if (eB) fade(0, H, 0, H - fw, 0, H - fw, W, fw);
-    if (eT) fade(0, 0, 0, fw, 0, 0, W, fw);
-    pc2.globalCompositeOperation = 'source-over';
-  }
+  var SIZE = 600, fs = SIZE / rect.size;
   var out = cnv(SIZE, SIZE), oc = out.getContext('2d');
   oc.fillStyle = '#fff'; oc.fillRect(0, 0, SIZE, SIZE); oc.imageSmoothingQuality = 'high';
-  oc.drawImage(layer, dx, dy, W * fs, H * fs);
-  return { original: p.original, processed: jpegUnder(out, 240 * 1024), head: Math.round(p.headH * fs / SIZE * 100), eyes: Math.round((SIZE - (p.eyeY - rect.y) * fs) / SIZE * 100), cut: headCut };
+  oc.drawImage(p.person, -rect.x * fs, -rect.y * fs, p.W * fs, p.H * fs);
+  return { original: p.original, processed: jpegUnder(out, 240 * 1024), head: Math.round(p.headH * fs / SIZE * 100), eyes: Math.round((SIZE - (p.eyeY - rect.y) * fs) / SIZE * 100), cut: hasCut(p, rect) };
 }
 async function aiProcess(file, onStage) { var p = await aiPrepare(file, onStage); return aiRender(p, p.rect); }
 var asJpeg = function (u) { return { mime: 'image/jpeg', data: u.split(',')[1] }; };
 /** Обработать фото с окном прогресса. → Promise { fin, orig, check, raw } */
 function aiPhoto(file, title) {
-  S.ai = { stage: 0, title: title, preview: URL.createObjectURL(file) }; render();
-  var done = function () { if (S.ai && S.ai.preview) URL.revokeObjectURL(S.ai.preview); S.ai = null; render(); };
-  var stage = function (i) { if (S.ai) { S.ai.stage = i; render(); } };
+  S.proc = { stage: 0, title: title, preview: URL.createObjectURL(file) }; overlay();
+  var done = function () { if (S.proc && S.proc.preview) URL.revokeObjectURL(S.proc.preview); S.proc = null; overlay(); };
+  var stage = function (i) { if (S.proc) { S.proc.stage = i; overlay(); } };
   return aiProcess(file, stage).then(function (r) {
     stage(3);
     return new Promise(function (res) { run('adminCheckPhoto', [asJpeg(r.processed)], function (chk) { res(chk); }, function () { res(null); }); })
@@ -692,31 +687,31 @@ function aiSave(c, tg, r, srcUrl) {
   }
 }
 function aiFix(c, tg) {
-  if (!c || !tg || S.ai) return;
-  S.lb = null; S.ai = { stage: 0, title: tg.name, preview: '' }; render();
+  if (!c || !tg || S.proc) return;
+  if (S.lb) { S.lb = null; render(); } S.proc = { stage: 0, title: tg.name, preview: '' }; overlay();
   run('adminGetPhoto', [tg.url], function (ph) {
-    S.ai = null;
+    S.proc = null;
     aiPhoto(b64File(ph), tg.name).then(function (r) { aiSave(c, tg, r); }, function () {});
-  }, function () { S.ai = null; render(); });
+  }, function () { S.proc = null; overlay(); });
 }
 /* ---------- ручное кадрирование: двигать/масштабировать, ИИ собирает 600×600 по выбранному кадру ---------- */
 function origUrlOf(c) { return (String(c.photoCheck || '').match(/оригинал:\s*(https?:\S+)/) || [])[1] || ''; }
 function openCrop(c, tg) {
-  if (!c || !tg || S.ai) return;
+  if (!c || !tg || S.proc) return;
   var srcUrl = tg.kind === 'me' ? (origUrlOf(c) || tg.url) : tg.url;
-  S.lb = null; S.ai = { stage: 0, title: tg.name, preview: '' }; render();
-  var stage = function (i) { if (S.ai) { S.ai.stage = i; render(); } };
+  if (S.lb) { S.lb = null; render(); } S.proc = { stage: 0, title: tg.name, preview: '' }; overlay();
+  var stage = function (i) { if (S.proc) { S.proc.stage = i; overlay(); } };
   run('adminGetPhoto', [srcUrl], function (ph) {
     aiPrepare(b64File(ph), stage).then(function (p) {
       var comp = cnv(p.W, p.H), cx = comp.getContext('2d');
       cx.fillStyle = '#fff'; cx.fillRect(0, 0, p.W, p.H); cx.drawImage(p.person, 0, 0);
-      S.ai = null;
+      S.proc = null;
       S.crop = { key: c.key, tg: tg, srcUrl: srcUrl, prep: p, rect: Object.assign({}, p.rect), comp: comp.toDataURL('image/jpeg', 0.9), busy: false };
-      render();
-    }, function (e) { S.ai = null; render(); toast(e.code === 'no_face' ? 'Не нашёл лицо на фото' : 'Не получилось обработать фото'); });
-  }, function () { S.ai = null; render(); });
+      overlay();
+    }, function (e) { S.proc = null; overlay(); toast(e.code === 'no_face' ? 'Не нашёл лицо на фото' : 'Не получилось обработать фото'); });
+  }, function () { S.proc = null; overlay(); });
 }
-function cropBounds(p) { var mn = p.headH / 0.75, mx = Math.max(p.W, p.H) * 1.4; return { min: mn, max: Math.max(mn * 1.5, mx) }; }
+function cropBounds(p) { var mn = Math.max(40, p.headH / 1.6), mx = Math.max(p.W, p.H) * 3; return { min: mn, max: Math.max(mn * 2, mx) }; }
 function cropZoomVal(cr) { var b = cropBounds(cr.prep); return Math.round(Math.log(b.max / cr.rect.size) / Math.log(b.max / b.min) * 1000); }
 function cropSetSize(cr, size, ax, ay) {
   var b = cropBounds(cr.prep); size = Math.max(b.min, Math.min(b.max, size));
@@ -727,12 +722,12 @@ function cropSetSize(cr, size, ax, ay) {
 function renderCrop() {
   var cr = S.crop; if (!cr) return '';
   return '<div class="lb crop-ov" role="dialog" aria-modal="true" aria-label="Кадрирование"><div class="crop-box">' +
-    '<div class="crop-h"><b>Кадрирование · 600×600</b><span class="muted">' + esc(cr.tg.name) + ' · двигайте фото, масштаб — ползунком или колесом</span></div>' +
+    '<div class="crop-h"><b>Кадрирование · 600×600</b><span class="muted">' + esc(cr.tg.name) + ' · двигайте фото; масштаб — ползунок, колесо или два пальца</span></div>' +
     '<div class="crop-stage" id="cropStage"><img id="cropImg" src="' + cr.comp + '" alt="" draggable="false">' +
     '<svg class="crop-guides" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><rect x="0" y="31" width="100" height="13" fill="rgba(91,75,196,.14)"/><line x1="0" y1="31" x2="100" y2="31" stroke="#5b4bc4" stroke-width=".4" stroke-dasharray="2 1.5"/><line x1="0" y1="44" x2="100" y2="44" stroke="#5b4bc4" stroke-width=".4" stroke-dasharray="2 1.5"/><line x1="50" y1="0" x2="50" y2="100" stroke="#5b4bc4" stroke-width=".25" stroke-dasharray="1.5 2"/></svg>' +
     '<span class="crop-lbl">зона глаз</span></div>' +
     '<div class="crop-metrics" id="cropMetrics"></div>' +
-    '<input type="range" id="cropZoom" min="0" max="1000" value="' + cropZoomVal(cr) + '" aria-label="Масштаб">' +
+    '<div class="crop-zoom"><button class="btn sm" data-act="cropZoomOut" aria-label="Отдалить">−</button><input type="range" id="cropZoom" min="0" max="1000" value="' + cropZoomVal(cr) + '" aria-label="Масштаб"><button class="btn sm" data-act="cropZoomIn" aria-label="Приблизить">+</button></div>' +
     '<div class="crop-acts"><button class="btn" data-act="cropAuto">Авто</button><span style="flex:1"></span><button class="btn" data-act="cropCancel">Отмена</button><button class="btn pri" data-act="cropApply"' + (cr.busy ? ' disabled' : '') + '>' + (cr.busy ? 'Сохраняю…' : 'Применить') + '</button></div>' +
     '</div></div>';
 }
@@ -744,22 +739,39 @@ function cropLayout() {
   var head = Math.round(p.headH / cr.rect.size * 100), eyes = Math.round((cr.rect.size - (p.eyeY - cr.rect.y)) / cr.rect.size * 100);
   var okH = head >= 50 && head <= 69, okE = eyes >= 56 && eyes <= 69;
   var m = document.getElementById('cropMetrics');
-  if (m) m.innerHTML = '<span class="' + (okH ? 'ok' : 'bad') + '">Голова ' + head + '% <small>норма 50–69</small></span><span class="' + (okE ? 'ok' : 'bad') + '">Глаза ' + eyes + '% от низа <small>норма 56–69</small></span>';
+  if (m) m.innerHTML = '<span class="' + (okH ? 'ok' : 'bad') + '">Голова ' + head + '% <small>норма 50–69</small></span><span class="' + (okE ? 'ok' : 'bad') + '">Глаза ' + eyes + '% от низа <small>норма 56–69</small></span>' +
+    (hasCut(p, cr.rect) ? '<span class="bad">Видна граница фото — приблизьте или сдвиньте</span>' : '');
   var zr = document.getElementById('cropZoom'); if (zr && document.activeElement !== zr) zr.value = cropZoomVal(cr);
 }
-var cropDrag = null;
+var cropPts = {}, cropDrag = null, cropPinch = null;
 document.addEventListener('pointerdown', function (e) {
   var st = e.target.closest && e.target.closest('#cropStage'); if (!st || !S.crop) return;
-  e.preventDefault(); cropDrag = { x: e.clientX, y: e.clientY, F: st.clientWidth, id: e.pointerId }; try { st.setPointerCapture(e.pointerId); } catch (x) {}
+  e.preventDefault(); try { st.setPointerCapture(e.pointerId); } catch (x) {}
+  cropPts[e.pointerId] = { x: e.clientX, y: e.clientY };
+  var ids = Object.keys(cropPts);
+  if (ids.length === 2) {
+    var a = cropPts[ids[0]], b = cropPts[ids[1]], r = st.getBoundingClientRect();
+    cropPinch = { d: Math.hypot(a.x - b.x, a.y - b.y), size: S.crop.rect.size, ax: ((a.x + b.x) / 2 - r.left) / r.width, ay: ((a.y + b.y) / 2 - r.top) / r.height };
+    cropDrag = null;
+  } else cropDrag = { x: e.clientX, y: e.clientY, F: st.clientWidth };
 });
 document.addEventListener('pointermove', function (e) {
-  if (!cropDrag || !S.crop) return;
+  if (!S.crop || !cropPts[e.pointerId]) return;
+  cropPts[e.pointerId] = { x: e.clientX, y: e.clientY };
+  var ids = Object.keys(cropPts);
+  if (cropPinch && ids.length >= 2) {
+    var a = cropPts[ids[0]], b = cropPts[ids[1]], d = Math.hypot(a.x - b.x, a.y - b.y);
+    if (d > 0) { var keep = Object.assign({}, S.crop.rect); S.crop.rect = keep; cropSetSize(S.crop, cropPinch.size * cropPinch.d / d, cropPinch.ax, cropPinch.ay); cropPinch.size = S.crop.rect.size; cropPinch.d = d; cropLayout(); }
+    return;
+  }
+  if (!cropDrag) return;
   var z = cropDrag.F / S.crop.rect.size;
   S.crop.rect.x -= (e.clientX - cropDrag.x) / z; S.crop.rect.y -= (e.clientY - cropDrag.y) / z;
   cropDrag.x = e.clientX; cropDrag.y = e.clientY; cropLayout();
 });
-document.addEventListener('pointerup', function () { cropDrag = null; });
-document.addEventListener('pointercancel', function () { cropDrag = null; });
+function cropUp(e) { delete cropPts[e.pointerId]; if (Object.keys(cropPts).length < 2) cropPinch = null; if (!Object.keys(cropPts).length) cropDrag = null; }
+document.addEventListener('pointerup', cropUp);
+document.addEventListener('pointercancel', cropUp);
 document.addEventListener('wheel', function (e) {
   var st = e.target.closest && e.target.closest('#cropStage'); if (!st || !S.crop) return;
   e.preventDefault();
@@ -768,12 +780,12 @@ document.addEventListener('wheel', function (e) {
 }, { passive: false });
 function cropApply() {
   var cr = S.crop, c = byKey[cr.key]; if (!cr || cr.busy || !c) return;
-  cr.busy = true; render();
+  cr.busy = true; overlay();
   var r = aiRender(cr.prep, cr.rect);
   run('adminCheckPhoto', [asJpeg(r.processed)], function (chk) { done(chk); }, function () { done(null); });
   function done(chk) {
     if (r.cut) chk = { ok: false, issues: ((chk && chk.issues) || []).concat(['cut_source']) };
-    var tg = cr.tg, src = cr.srcUrl; S.crop = null; render();
+    var tg = cr.tg, src = cr.srcUrl; S.crop = null; overlay();
     aiSave(c, tg, { fin: r.processed, orig: r.original, check: chk, raw: false }, src);
   }
 }
@@ -782,8 +794,18 @@ function aiVerdict(r) {
   if (!r.check) return 'Фото обработано · проверка недоступна';
   return r.check.issues && r.check.issues.length ? 'ИИ: ' + r.check.issues.map(function (k) { return AI_ISSUES[k] || k; }).join(', ') : 'ИИ: фото подходит';
 }
+/* Окна обработки и кадрирования живут в отдельном слое — админка под ними не перерисовывается (без мигания). */
+function overlay() {
+  var el = document.getElementById('ovl');
+  if (!el) { el = document.createElement('div'); el.id = 'ovl'; document.body.appendChild(el); }
+  var keepZoom = document.activeElement && document.activeElement.id === 'cropZoom';
+  var html = renderCrop() + renderAi();
+  if (el.getAttribute('data-h') !== html) { el.innerHTML = html; el.setAttribute('data-h', html); }
+  if (S.crop) cropLayout();
+  if (keepZoom) { var z = document.getElementById('cropZoom'); if (z) z.focus(); }
+}
 function renderAi() {
-  var a = S.ai; if (!a) return '';
+  var a = S.proc; if (!a) return '';
   return '<div class="lb ai-ov" role="dialog" aria-modal="true" aria-label="Обработка фото"><div class="ai-box"><div class="ai-box-h"><b>Обработка фото</b><span class="muted">' + esc(a.title || '') + '</span></div><div class="ai-box-b">' +
     '<span class="ai-th">' + (a.preview ? '<img src="' + a.preview + '" alt="">' : '') + '</span><span class="ai-stages">' + AI_STAGES.map(function (t, i) {
       return '<span class="ai-stg' + (i < a.stage ? ' ok' : i === a.stage ? ' on' : '') + '"><i>' + (i < a.stage ? '✓' : '') + '</i>' + t + '</span>';
@@ -821,11 +843,9 @@ function render() {
     html += '<div class="lb" data-act="lbClose" role="dialog" aria-modal="true" aria-label="Фото"><figure class="lb-fig"><div class="lb-img"><img src="' + (id ? thumb(S.lb.url, 1600) : esc(S.lb.url)) + '" alt="' + esc(S.lb.name) + '" referrerpolicy="no-referrer"></div>' +
       '<figcaption><b>' + esc(S.lb.name) + '</b><span class="lb-btns">' + (aiTarget(sel, S.lb.url) ? '<button class="btn" data-act="cropOpen" title="Выбрать кадр вручную">' + CROPI + ' Кадрировать</button><button class="btn ai-btn" data-act="aiFixLb" title="Белый фон и формат 600×600 по правилам DV">' + SPARK + ' Привести к формату</button>' : '') + (id ? '<a class="btn pri" href="https://drive.google.com/uc?export=download&id=' + id + '" download>Скачать</a>' : '') + '<button class="btn" data-act="lbClose">Закрыть</button></span></figcaption></figure></div>';
   }
-  html += renderCrop();
-  html += renderAi();
   document.getElementById('app').innerHTML = html;
   if (keep) { var el = document.getElementById(keep); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch (e) {} } }
-  if (S.crop) cropLayout();
+  overlay();
   syncUrl();
 }
 
@@ -1192,7 +1212,8 @@ document.addEventListener('click', function (e) {
   if (a === 'logout') { e.preventDefault(); logout(); return; }
   if (!S.data) return;
   if (a === 'cropOpen') { e.preventDefault(); openCrop(byKey[S.sel], aiTarget(byKey[S.sel], v || (S.lb && S.lb.url))); return; }
-  if (a === 'cropCancel') { S.crop = null; render(); return; }
+  if (a === 'cropCancel') { S.crop = null; overlay(); return; }
+  if ((a === 'cropZoomIn' || a === 'cropZoomOut') && S.crop) { cropSetSize(S.crop, S.crop.rect.size * (a === 'cropZoomIn' ? 1 / 1.15 : 1.15)); cropLayout(); return; }
   if (a === 'cropAuto' && S.crop) { S.crop.rect = Object.assign({}, S.crop.prep.rect); cropLayout(); return; }
   if (a === 'cropApply') { cropApply(); return; }
   if (a === 'aiFix') { e.preventDefault(); aiFix(byKey[S.sel], aiTarget(byKey[S.sel], v)); return; }
@@ -1355,7 +1376,7 @@ document.addEventListener('change', function (e) {
   }
 });
 document.addEventListener('keydown', function (e) {
-  if (e.key === 'Escape' && S.crop && !S.crop.busy) { S.crop = null; render(); return; }
+  if (e.key === 'Escape' && S.crop && !S.crop.busy) { S.crop = null; overlay(); return; }
   if (e.key === 'Escape' && S.lb) { S.lb = null; render(); return; }
   if (e.key === 'Escape' && S.menu) { S.menu = false; render(); }
   if (S.edit && e.target && e.target.id === 'ed-in') {

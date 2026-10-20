@@ -48,50 +48,32 @@ function jpegUnder(c, max) {
   return url;
 }
 
-// Касается ли человек края исходника (тогда этот край надо увести за кадр, иначе будет «срез» и белое поле).
-function edgesTouched(m) {
+// Где у человека «срез»: край исходника, в который он упирается, или ровная горизонтальная граница внутри фото
+// (если фото уже обрезали раньше и под ним белое поле). Эти срезы надо увести за кадр.
+export function findEdges(m, W, H) {
   const at = (x, y) => m.a[y * m.w + x] > 0.5;
-  const t = { b: false, l: false, r: false };
-  for (let x = 0; x < m.w; x++) if (at(x, m.h - 1) || at(x, m.h - 2)) { t.b = true; break; }
-  for (let y = Math.floor(m.h * 0.2); y < m.h; y++) {
-    if (at(0, y) || at(1, y)) t.l = true;
-    if (at(m.w - 1, y) || at(m.w - 2, y)) t.r = true;
+  const e = { bY: null, l: false, r: false, t: false };
+  for (let x = 0; x < m.w; x++) { if (at(x, m.h - 1) || at(x, m.h - 2)) { e.bY = H; break; } }
+  if (e.bY === null) {
+    for (let y = m.h - 1; y > m.h * 0.5; y--) {
+      let n = 0; for (let x = 0; x < m.w; x++) if (at(x, y)) n++;
+      if (n > 0) { if (n / m.w >= 0.3) e.bY = (y + 1) / m.h * H; break; }
+    }
   }
-  return t;
+  for (let y = Math.floor(m.h * 0.2); y < m.h; y++) { if (at(0, y) || at(1, y)) e.l = true; if (at(m.w - 1, y) || at(m.w - 2, y)) e.r = true; }
+  for (let x = 0; x < m.w; x++) if (at(x, 0) || at(x, 1)) { e.t = true; break; }
+  return e;
 }
-
-// Если человек упирается в край исходника, а этот край остался внутри кадра — мягко растушёвываем срез в белый,
-// чтобы не было ровной линии. Голову не дорисовываем: если обрезана она — помечаем, что нужен снимок с запасом.
-function extendBody(person, m, W, H, chinY, fit, s) {
-  const at = (x, y) => m.a[Math.min(m.h - 1, Math.floor(y / H * m.h)) * m.w + Math.min(m.w - 1, Math.floor(x / W * m.w))] > 0.5;
-  const sideTouch = (x, y0, y1) => { for (let y = y0; y < y1; y += 2) if (at(x, y)) return true; return false; };
-  const yc = Math.min(H - 2, Math.max(0, Math.round(chinY)));
-  const gapL = Math.max(0, fit.dx) / s, gapR = Math.max(0, SIZE - (fit.dx + W * s)) / s, gapB = Math.max(0, SIZE - (fit.dy + H * s)) / s;
-  const L = sideTouch(1, 0, H) && gapL > 2 / s, R = sideTouch(W - 2, 0, H) && gapR > 2 / s;
-  const B = (() => { for (let x = 0; x < W; x += 2) if (at(x, H - 2)) return true; return false; })() && gapB > 2 / s;
-  const T = (() => { for (let x = 0; x < W; x += 2) if (at(x, 1)) return true; return false; })() && fit.dy > 2;
-  const touchLen = (x, y0, y1) => { let n = 0; for (let y = y0; y < y1; y += 2) if (at(x, y)) n += 2; return n; };
-  // Голова обрезана, если край исходника режет её заметно (≥ 12% высоты лица) и этот край виден в кадре.
-  const minCut = Math.max(8, yc * 0.12);
-  const headCut = (T && fit.dy > 10) || (L && gapL * s > 10 && touchLen(1, 0, yc) > minCut) || (R && gapR * s > 10 && touchLen(W - 2, 0, yc) > minCut);
-  if (!L && !R && !B && !T) return { canvas: person, padL: 0, headCut };
-  const c = canvas(W, H), x = c.getContext("2d");
-  x.drawImage(person, 0, 0);
-  x.globalCompositeOperation = "destination-out";
-  const f = Math.round(Math.min(W, H) * 0.06);
-  const fade = (x0, y0, x1, y1, rx, ry, rw, rh) => { const g = x.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, "rgba(0,0,0,1)"); g.addColorStop(1, "rgba(0,0,0,0)"); x.fillStyle = g; x.fillRect(rx, ry, rw, rh); };
-  if (L) fade(0, 0, f, 0, 0, 0, f, H);
-  if (R) fade(W, 0, W - f, 0, W - f, 0, f, H);
-  if (B) fade(0, H, 0, H - f, 0, H - f, W, f);
-  if (T) fade(0, 0, 0, f, 0, 0, W, f);
-  x.globalCompositeOperation = "source-over";
-  return { canvas: c, padL: 0, headCut };
+// Видны ли срезы в кадре (тогда фото помечается: нужен снимок с запасом). Ничего не растушёвываем.
+export function visibleCut(e, W, dx, dy, s) {
+  const gB = e.bY !== null ? SIZE - (dy + e.bY * s) : 0, gL = e.l ? dx : 0, gR = e.r ? SIZE - (dx + W * s) : 0, gT = e.t ? dy : 0;
+  return gB > 6 || gL > 6 || gR > 6 || gT > 6;
 }
 
 // Подбор масштаба и положения: голова 50–69% (лучше ~60%), глаза 56–69% от низа, отступ над головой,
 // края исходника, в которые упирается человек, — за пределами кадра.
 export function fitFrame({ W, H, eyeX, eyeY, topY, headH, mask }) {
-  const touch = edgesTouched(mask);
+  const e = findEdges(mask, W, H);
   const s0 = (SIZE * HEAD_TARGET) / headH, sMax = (SIZE * 0.68) / headH, sMin = (SIZE * 0.52) / headH;
   let best = null;
   for (let i = 0; i <= 24; i++) {
@@ -100,10 +82,10 @@ export function fitFrame({ W, H, eyeX, eyeY, topY, headH, mask }) {
       for (let off = -36; off <= 36; off += 6) {
         const dx = SIZE / 2 + off - eyeX * s, dy = eyeT - eyeY * s;
         const top = dy + topY * s;
-        const gap = (touch.b ? Math.max(0, SIZE - (dy + H * s)) : 0) + (touch.l ? Math.max(0, dx) : 0) + (touch.r ? Math.max(0, SIZE - (dx + W * s)) : 0);
+        const gap = (e.bY !== null ? Math.max(0, SIZE - (dy + e.bY * s)) : 0) + (e.l ? Math.max(0, dx) : 0) + (e.r ? Math.max(0, SIZE - (dx + W * s)) : 0);
         const topPen = top < SIZE * 0.04 ? (SIZE * 0.04 - top) * 20 : top > SIZE * 0.16 ? (top - SIZE * 0.16) * 2 : 0;
         const score = gap * 10 + topPen + Math.abs(s - s0) / s0 * 120 + Math.abs(eyeT - SIZE * 0.375) * 0.15 + Math.abs(off) * 0.4;
-        if (!best || score < best.score) best = { score, s, eyeT, dx, dy, gap };
+        if (!best || score < best.score) best = { score, s, eyeT, dx, dy, gap, edges: e };
       }
     }
   }
@@ -170,14 +152,13 @@ export async function processPhoto(file, onStage = () => {}) {
   onStage(2); await tick();
   const fit = fitFrame({ W, H, eyeX, eyeY, topY, headH, mask: best });
   const s = fit.s, eyeT = fit.eyeT;
-  const body = extendBody(person, best, W, H, chinY, fit, s);
   const out = canvas(SIZE, SIZE), oc = out.getContext("2d");
   oc.fillStyle = "#fff"; oc.fillRect(0, 0, SIZE, SIZE);
   oc.imageSmoothingQuality = "high";
-  oc.drawImage(body.canvas, fit.dx - body.padL * s, fit.dy, body.canvas.width * s, body.canvas.height * s);
+  oc.drawImage(person, fit.dx, fit.dy, W * s, H * s);
   const processed = jpegUnder(out, MAX_BYTES);
   return {
     original, processed,
-    metrics: { cut: body.headCut, head: Math.round(headH * s / SIZE * 100), eyes: Math.round((SIZE - eyeT) / SIZE * 100), faces: det.length, kb: Math.round(processed.length * 0.75 / 1024) },
+    metrics: { cut: visibleCut(fit.edges, W, fit.dx, fit.dy, s), head: Math.round(headH * s / SIZE * 100), eyes: Math.round((SIZE - eyeT) / SIZE * 100), faces: det.length, kb: Math.round(processed.length * 0.75 / 1024) },
   };
 }
