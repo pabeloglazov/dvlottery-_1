@@ -1074,6 +1074,21 @@ a{color:var(--green)}
 .ai-stg.on{color:#5b4bc4;font-weight:600}.ai-stg.on i{border-color:#5b4bc4;border-top-color:transparent;animation:aiSpin .8s linear infinite}
 .ai-stg.ok{color:var(--ink)}.ai-stg.ok i{background:var(--green);border-color:var(--green);color:#fff}
 @keyframes aiSpin{to{transform:rotate(360deg)}}
+.crop-ov{cursor:default}
+.crop-box{width:min(460px,100%);background:#fff;border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:10px;max-height:calc(100vh - 32px);overflow:auto}
+.crop-h{display:flex;flex-direction:column}.crop-h b{font-size:16px}.crop-h .muted{font-size:12.5px}
+.crop-stage{position:relative;width:100%;aspect-ratio:1;overflow:hidden;border-radius:10px;background:#fff;border:1px solid var(--line);cursor:grab;touch-action:none;user-select:none}
+.crop-stage:active{cursor:grabbing}
+.crop-stage img{position:absolute;left:0;top:0;max-width:none;transform-origin:0 0;pointer-events:none}
+.crop-guides{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.crop-lbl{position:absolute;right:6px;top:calc(31% - 18px);font-size:11px;color:#5b4bc4;background:rgba(255,255,255,.85);padding:1px 6px;border-radius:6px;pointer-events:none}
+.crop-metrics{display:flex;gap:8px;flex-wrap:wrap}
+.crop-metrics span{font-size:13px;font-weight:600;border-radius:999px;padding:3px 10px}
+.crop-metrics small{font-weight:500;opacity:.75;margin-left:4px}
+.crop-metrics .ok{background:var(--tint);color:var(--greenInk)}.crop-metrics .bad{background:#fbe3e4;color:#9b2730}
+#cropZoom{width:100%;accent-color:var(--green)}
+.crop-acts{display:flex;gap:8px;align-items:center}
+.crop-chip{padding:2px 6px}
 .ai-chip{display:inline-flex;align-items:center;gap:3px;border:1px solid #d9d3f5;background:#f4f2fd;color:#5b4bc4;border-radius:999px;padding:2px 8px;font-size:11.5px;font-weight:700;cursor:pointer}
 .ai-chip svg,.ai-btn svg{width:12px;height:12px}
 .ai-chip:hover{background:#e9e5fb}
@@ -1559,7 +1574,8 @@ function loadImg(file) {
   });
 }
 var pause = function () { return new Promise(function (r) { setTimeout(r, 30); }); };
-async function aiProcess(file, onStage) {
+/* Подготовка: лицо + маска + авто-кадр. Отдельно от сборки, чтобы кадр можно было поправить вручную. */
+async function aiPrepare(file, onStage) {
   var SIZE = 600, img = await loadImg(file);
   var k = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight)), W = Math.round(img.naturalWidth * k), H = Math.round(img.naturalHeight * k);
   var src = cnv(W, H); src.getContext('2d').drawImage(img, 0, 0, W, H);
@@ -1591,7 +1607,7 @@ async function aiProcess(file, onStage) {
   outer: for (var y = 0; y < yLim; y++) for (var x = x0; x <= x1; x++) if (best.a[y * best.w + x] > 0.5) { topY = y / best.h * H; break outer; }
   var chinY = Math.max(bb.originY + bb.height, mouthY + (mouthY - eyeY) * 0.9), headH = Math.max(10, chinY - topY);
   onStage(2); await pause();
-  // Края исходника, в которые упирается человек, уводим за кадр; голова 52–68%, глаза 56–69% от низа, отступ над головой.
+  // Авто-кадр: края исходника, в которые упирается человек, — за кадром; голова 52–68%, глаза 56–69% от низа, отступ над головой.
   var at = function (x, y) { return best.a[y * best.w + x] > 0.5; }, touch = { b: false, l: false, r: false };
   for (var bx = 0; bx < best.w; bx++) if (at(bx, best.h - 1) || at(bx, best.h - 2)) { touch.b = true; break; }
   for (var by = Math.floor(best.h * 0.2); by < best.h; by++) { if (at(0, by) || at(1, by)) touch.l = true; if (at(best.w - 1, by) || at(best.w - 2, by)) touch.r = true; }
@@ -1603,20 +1619,27 @@ async function aiProcess(file, onStage) {
       var gap = (touch.b ? Math.max(0, SIZE - (dy + H * sc)) : 0) + (touch.l ? Math.max(0, dx) : 0) + (touch.r ? Math.max(0, SIZE - (dx + W * sc)) : 0);
       var topPen = top < SIZE * 0.04 ? (SIZE * 0.04 - top) * 20 : top > SIZE * 0.16 ? (top - SIZE * 0.16) * 2 : 0;
       var score = gap * 10 + topPen + Math.abs(sc - s0) / s0 * 120 + Math.abs(et - SIZE * 0.375) * 0.15 + Math.abs(off) * 0.4;
-      if (!fit || score < fit.score) fit = { score: score, s: sc, eyeT: et, dx: dx, dy: dy, gap: gap };
+      if (!fit || score < fit.score) fit = { score: score, s: sc, dx: dx, dy: dy };
     }
   }
-  // Срез исходника внутри кадра — мягко растушёвываем в белый; если режет голову — помечаем.
+  return { original: original, W: W, H: H, person: person, mask: best, eyeX: eyeX, eyeY: eyeY, topY: topY, chinY: chinY, headH: headH,
+    rect: { x: -fit.dx / fit.s, y: -fit.dy / fit.s, size: SIZE / fit.s } };
+}
+/** Сборка 600×600 по квадрату rect (в пикселях исходника). Срезы исходника внутри кадра мягко растушёвываются. */
+function aiRender(p, rect) {
+  var SIZE = 600, W = p.W, H = p.H, best = p.mask, fs = SIZE / rect.size, dx = -rect.x * fs, dy = -rect.y * fs;
   var atP = function (x, y) { return best.a[Math.min(best.h - 1, Math.floor(y / H * best.h)) * best.w + Math.min(best.w - 1, Math.floor(x / W * best.w))] > 0.5; };
   var tLen = function (x, y0, y1) { var n = 0; for (var yy = y0; yy < y1; yy += 2) if (atP(x, yy)) n += 2; return n; };
-  var yc = Math.min(H - 2, Math.max(0, Math.round(chinY))), fs = fit.s;
-  var gL = Math.max(0, fit.dx), gR = Math.max(0, SIZE - (fit.dx + W * fs)), gB = Math.max(0, SIZE - (fit.dy + H * fs));
-  var eL = tLen(1, 0, H) > 0 && gL > 2, eR = tLen(W - 2, 0, H) > 0 && gR > 2, eB = touch.b && gB > 2, minCut = Math.max(8, yc * 0.12);
-  var eT = false; for (var tx = 0; tx < W; tx += 2) if (atP(tx, 1)) { eT = fit.dy > 2; break; }
-  var headCut = (eT && fit.dy > 10) || (eL && gL > 10 && tLen(1, 0, yc) > minCut) || (eR && gR > 10 && tLen(W - 2, 0, yc) > minCut);
+  var bTouch = false; for (var bx = 0; bx < W; bx += 2) if (atP(bx, H - 2)) { bTouch = true; break; }
+  var yc = Math.min(H - 2, Math.max(0, Math.round(p.chinY)));
+  var gL = Math.max(0, dx), gR = Math.max(0, SIZE - (dx + W * fs)), gB = Math.max(0, SIZE - (dy + H * fs));
+  var eL = tLen(1, 0, H) > 0 && gL > 2, eR = tLen(W - 2, 0, H) > 0 && gR > 2, eB = bTouch && gB > 2, minCut = Math.max(8, yc * 0.12);
+  var eT = false; for (var tx = 0; tx < W; tx += 2) if (atP(tx, 1)) { eT = dy > 2; break; }
+  var headCut = (eT && dy > 10) || (eL && gL > 10 && tLen(1, 0, yc) > minCut) || (eR && gR > 10 && tLen(W - 2, 0, yc) > minCut);
+  var layer = p.person;
   if (eL || eR || eB || eT) {
-    var pc2 = person.getContext('2d'), fw = Math.round(Math.min(W, H) * 0.06);
-    pc2.globalCompositeOperation = 'destination-out';
+    layer = cnv(W, H); var pc2 = layer.getContext('2d'), fw = Math.round(Math.min(W, H) * 0.06);
+    pc2.drawImage(p.person, 0, 0); pc2.globalCompositeOperation = 'destination-out';
     var fade = function (x0, y0, x1, y1, rx, ry, rw, rh) { var g = pc2.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)'); pc2.fillStyle = g; pc2.fillRect(rx, ry, rw, rh); };
     if (eL) fade(0, 0, fw, 0, 0, 0, fw, H);
     if (eR) fade(W, 0, W - fw, 0, W - fw, 0, fw, H);
@@ -1626,9 +1649,10 @@ async function aiProcess(file, onStage) {
   }
   var out = cnv(SIZE, SIZE), oc = out.getContext('2d');
   oc.fillStyle = '#fff'; oc.fillRect(0, 0, SIZE, SIZE); oc.imageSmoothingQuality = 'high';
-  oc.drawImage(person, fit.dx, fit.dy, W * fs, H * fs);
-  return { original: original, processed: jpegUnder(out, 240 * 1024), head: Math.round(headH * fs / SIZE * 100), eyes: Math.round((SIZE - fit.eyeT) / SIZE * 100), cut: headCut };
+  oc.drawImage(layer, dx, dy, W * fs, H * fs);
+  return { original: p.original, processed: jpegUnder(out, 240 * 1024), head: Math.round(p.headH * fs / SIZE * 100), eyes: Math.round((SIZE - (p.eyeY - rect.y) * fs) / SIZE * 100), cut: headCut };
 }
+async function aiProcess(file, onStage) { var p = await aiPrepare(file, onStage); return aiRender(p, p.rect); }
 var asJpeg = function (u) { return { mime: 'image/jpeg', data: u.split(',')[1] }; };
 /** Обработать фото с окном прогресса. → Promise { fin, orig, check, raw } */
 function aiPhoto(file, title) {
@@ -1659,24 +1683,103 @@ function aiTarget(c, url) {
   var m = family(c).filter(function (x) { return x.photo === url; })[0];
   return m ? { kind: m.kind, idx: m.idx, name: m.name, url: url } : null;
 }
+function aiSave(c, tg, r, srcUrl) {
+  toast('Сохраняю фото…');
+  if (tg.kind === 'me') {
+    run('adminSetPhoto', [c.row, asJpeg(r.fin), r.raw ? null : { originalUrl: srcUrl || tg.url, check: r.check }], function (res) {
+      c.photo = res && res.url ? res.url : res; if (res && res.photoCheck) c.photoCheck = res.photoCheck; render(); toast('Фото обновлено · ' + aiVerdict(r));
+    });
+  } else {
+    run('adminSetMemberPhoto', [c.row, tg.kind, tg.idx, asJpeg(r.fin)], function (text) {
+      if (tg.kind === 'spouse') c.spouseData = text; else c.kidsData = text; render(); toast(tg.name + ' · ' + aiVerdict(r));
+    });
+  }
+}
 function aiFix(c, tg) {
   if (!c || !tg || S.ai) return;
   S.lb = null; S.ai = { stage: 0, title: tg.name, preview: '' }; render();
   run('adminGetPhoto', [tg.url], function (ph) {
     S.ai = null;
-    aiPhoto(b64File(ph), tg.name).then(function (r) {
-      toast('Сохраняю фото…');
-      if (tg.kind === 'me') {
-        run('adminSetPhoto', [c.row, asJpeg(r.fin), r.raw ? null : { originalUrl: tg.url, check: r.check }], function (res) {
-          c.photo = res && res.url ? res.url : res; if (res && res.photoCheck) c.photoCheck = res.photoCheck; render(); toast('Фото обновлено · ' + aiVerdict(r));
-        });
-      } else {
-        run('adminSetMemberPhoto', [c.row, tg.kind, tg.idx, asJpeg(r.fin)], function (text) {
-          if (tg.kind === 'spouse') c.spouseData = text; else c.kidsData = text; render(); toast(tg.name + ' · ' + aiVerdict(r));
-        });
-      }
-    }, function () {});
+    aiPhoto(b64File(ph), tg.name).then(function (r) { aiSave(c, tg, r); }, function () {});
   }, function () { S.ai = null; render(); });
+}
+/* ---------- ручное кадрирование: двигать/масштабировать, ИИ собирает 600×600 по выбранному кадру ---------- */
+function origUrlOf(c) { return (String(c.photoCheck || '').match(/оригинал:\s*(https?:\S+)/) || [])[1] || ''; }
+function openCrop(c, tg) {
+  if (!c || !tg || S.ai) return;
+  var srcUrl = tg.kind === 'me' ? (origUrlOf(c) || tg.url) : tg.url;
+  S.lb = null; S.ai = { stage: 0, title: tg.name, preview: '' }; render();
+  var stage = function (i) { if (S.ai) { S.ai.stage = i; render(); } };
+  run('adminGetPhoto', [srcUrl], function (ph) {
+    aiPrepare(b64File(ph), stage).then(function (p) {
+      var comp = cnv(p.W, p.H), cx = comp.getContext('2d');
+      cx.fillStyle = '#fff'; cx.fillRect(0, 0, p.W, p.H); cx.drawImage(p.person, 0, 0);
+      S.ai = null;
+      S.crop = { key: c.key, tg: tg, srcUrl: srcUrl, prep: p, rect: Object.assign({}, p.rect), comp: comp.toDataURL('image/jpeg', 0.9), busy: false };
+      render();
+    }, function (e) { S.ai = null; render(); toast(e.code === 'no_face' ? 'Не нашёл лицо на фото' : 'Не получилось обработать фото'); });
+  }, function () { S.ai = null; render(); });
+}
+function cropBounds(p) { var mn = p.headH / 0.75, mx = Math.max(p.W, p.H) * 1.4; return { min: mn, max: Math.max(mn * 1.5, mx) }; }
+function cropZoomVal(cr) { var b = cropBounds(cr.prep); return Math.round(Math.log(b.max / cr.rect.size) / Math.log(b.max / b.min) * 1000); }
+function cropSetSize(cr, size, ax, ay) {
+  var b = cropBounds(cr.prep); size = Math.max(b.min, Math.min(b.max, size));
+  if (ax == null) { ax = 0.5; ay = 0.5; }
+  var px = cr.rect.x + cr.rect.size * ax, py = cr.rect.y + cr.rect.size * ay;
+  cr.rect = { x: px - size * ax, y: py - size * ay, size: size };
+}
+function renderCrop() {
+  var cr = S.crop; if (!cr) return '';
+  return '<div class="lb crop-ov" role="dialog" aria-modal="true" aria-label="Кадрирование"><div class="crop-box">' +
+    '<div class="crop-h"><b>Кадрирование · 600×600</b><span class="muted">' + esc(cr.tg.name) + ' · двигайте фото, масштаб — ползунком или колесом</span></div>' +
+    '<div class="crop-stage" id="cropStage"><img id="cropImg" src="' + cr.comp + '" alt="" draggable="false">' +
+    '<svg class="crop-guides" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><rect x="0" y="31" width="100" height="13" fill="rgba(91,75,196,.14)"/><line x1="0" y1="31" x2="100" y2="31" stroke="#5b4bc4" stroke-width=".4" stroke-dasharray="2 1.5"/><line x1="0" y1="44" x2="100" y2="44" stroke="#5b4bc4" stroke-width=".4" stroke-dasharray="2 1.5"/><line x1="50" y1="0" x2="50" y2="100" stroke="#5b4bc4" stroke-width=".25" stroke-dasharray="1.5 2"/></svg>' +
+    '<span class="crop-lbl">зона глаз</span></div>' +
+    '<div class="crop-metrics" id="cropMetrics"></div>' +
+    '<input type="range" id="cropZoom" min="0" max="1000" value="' + cropZoomVal(cr) + '" aria-label="Масштаб">' +
+    '<div class="crop-acts"><button class="btn" data-act="cropAuto">Авто</button><span style="flex:1"></span><button class="btn" data-act="cropCancel">Отмена</button><button class="btn pri" data-act="cropApply"' + (cr.busy ? ' disabled' : '') + '>' + (cr.busy ? 'Сохраняю…' : 'Применить') + '</button></div>' +
+    '</div></div>';
+}
+function cropLayout() {
+  var cr = S.crop, st = document.getElementById('cropStage'), im = document.getElementById('cropImg'); if (!cr || !st || !im) return;
+  var F = st.clientWidth, z = F / cr.rect.size, p = cr.prep;
+  im.style.width = (p.W * z) + 'px'; im.style.height = (p.H * z) + 'px';
+  im.style.transform = 'translate(' + (-cr.rect.x * z) + 'px,' + (-cr.rect.y * z) + 'px)';
+  var head = Math.round(p.headH / cr.rect.size * 100), eyes = Math.round((cr.rect.size - (p.eyeY - cr.rect.y)) / cr.rect.size * 100);
+  var okH = head >= 50 && head <= 69, okE = eyes >= 56 && eyes <= 69;
+  var m = document.getElementById('cropMetrics');
+  if (m) m.innerHTML = '<span class="' + (okH ? 'ok' : 'bad') + '">Голова ' + head + '% <small>норма 50–69</small></span><span class="' + (okE ? 'ok' : 'bad') + '">Глаза ' + eyes + '% от низа <small>норма 56–69</small></span>';
+  var zr = document.getElementById('cropZoom'); if (zr && document.activeElement !== zr) zr.value = cropZoomVal(cr);
+}
+var cropDrag = null;
+document.addEventListener('pointerdown', function (e) {
+  var st = e.target.closest && e.target.closest('#cropStage'); if (!st || !S.crop) return;
+  e.preventDefault(); cropDrag = { x: e.clientX, y: e.clientY, F: st.clientWidth, id: e.pointerId }; try { st.setPointerCapture(e.pointerId); } catch (x) {}
+});
+document.addEventListener('pointermove', function (e) {
+  if (!cropDrag || !S.crop) return;
+  var z = cropDrag.F / S.crop.rect.size;
+  S.crop.rect.x -= (e.clientX - cropDrag.x) / z; S.crop.rect.y -= (e.clientY - cropDrag.y) / z;
+  cropDrag.x = e.clientX; cropDrag.y = e.clientY; cropLayout();
+});
+document.addEventListener('pointerup', function () { cropDrag = null; });
+document.addEventListener('pointercancel', function () { cropDrag = null; });
+document.addEventListener('wheel', function (e) {
+  var st = e.target.closest && e.target.closest('#cropStage'); if (!st || !S.crop) return;
+  e.preventDefault();
+  var r = st.getBoundingClientRect(), ax = (e.clientX - r.left) / r.width, ay = (e.clientY - r.top) / r.height;
+  cropSetSize(S.crop, S.crop.rect.size * (e.deltaY > 0 ? 1.06 : 1 / 1.06), ax, ay); cropLayout();
+}, { passive: false });
+function cropApply() {
+  var cr = S.crop, c = byKey[cr.key]; if (!cr || cr.busy || !c) return;
+  cr.busy = true; render();
+  var r = aiRender(cr.prep, cr.rect);
+  run('adminCheckPhoto', [asJpeg(r.processed)], function (chk) { done(chk); }, function () { done(null); });
+  function done(chk) {
+    if (r.cut) chk = { ok: false, issues: ((chk && chk.issues) || []).concat(['cut_source']) };
+    var tg = cr.tg, src = cr.srcUrl; S.crop = null; render();
+    aiSave(c, tg, { fin: r.processed, orig: r.original, check: chk, raw: false }, src);
+  }
 }
 function aiVerdict(r) {
   if (r.raw) return 'Фото сохранено без автообработки';
@@ -1720,11 +1823,13 @@ function render() {
   if (S.lb) {
     var id = driveId(S.lb.url);
     html += '<div class="lb" data-act="lbClose" role="dialog" aria-modal="true" aria-label="Фото"><figure class="lb-fig"><div class="lb-img"><img src="' + (id ? thumb(S.lb.url, 1600) : esc(S.lb.url)) + '" alt="' + esc(S.lb.name) + '" referrerpolicy="no-referrer"></div>' +
-      '<figcaption><b>' + esc(S.lb.name) + '</b><span class="lb-btns">' + (aiTarget(sel, S.lb.url) ? '<button class="btn ai-btn" data-act="aiFixLb" title="Белый фон и формат 600×600 по правилам DV">' + SPARK + ' Привести к формату</button>' : '') + (id ? '<a class="btn pri" href="https://drive.google.com/uc?export=download&id=' + id + '" download>Скачать</a>' : '') + '<button class="btn" data-act="lbClose">Закрыть</button></span></figcaption></figure></div>';
+      '<figcaption><b>' + esc(S.lb.name) + '</b><span class="lb-btns">' + (aiTarget(sel, S.lb.url) ? '<button class="btn" data-act="cropOpen" title="Выбрать кадр вручную">' + CROPI + ' Кадрировать</button><button class="btn ai-btn" data-act="aiFixLb" title="Белый фон и формат 600×600 по правилам DV">' + SPARK + ' Привести к формату</button>' : '') + (id ? '<a class="btn pri" href="https://drive.google.com/uc?export=download&id=' + id + '" download>Скачать</a>' : '') + '<button class="btn" data-act="lbClose">Закрыть</button></span></figcaption></figure></div>';
   }
+  html += renderCrop();
   html += renderAi();
   document.getElementById('app').innerHTML = html;
   if (keep) { var el = document.getElementById(keep); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch (e) {} } }
+  if (S.crop) cropLayout();
   syncUrl();
 }
 
@@ -1834,6 +1939,7 @@ function renderOverview(y) {
   return h;
 }
 
+var CROPI = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 1.5V12h10.5M1.5 4H12v10.5"/></svg>';
 var SPARK = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1l1.5 4.5L14 7l-4.5 1.5L8 13l-1.5-4.5L2 7l4.5-1.5z"/><path d="M13 11l.6 1.4L15 13l-1.4.6L13 15l-.6-1.4L11 13l1.4-.6z"/></svg>';
 var CPI = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.8"/><path d="M10.5 5.5V3.8A1.3 1.3 0 0 0 9.2 2.5H3.8A1.3 1.3 0 0 0 2.5 3.8v5.4a1.3 1.3 0 0 0 1.3 1.3h1.7"/></svg>';
 var OKI = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>';
@@ -1992,7 +2098,7 @@ function renderCard(c, y) {
     '<span class="row-tags">' + (s ? pill(s.result || s.status) : '<span class="pill p-none">нет в DV-' + y + '</span>') + '<span class="tag">' + (fam.length ? 'семья · ' + (fam.length + 1) : 'один') + '</span>' +
     (missing ? '<span class="pill" style="background:#fbe3e4;color:#9b2730">нет фото: ' + missing + '</span>' : '<span class="pill p-paid">все фото есть</span>') + '</span></div>' +
     '<div class="head-actions">' + (tg ? '<a class="btn pri" href="' + esc(tg) + '" target="_blank" rel="noopener">Telegram</a>' : '') + (c.email ? '<a class="btn" href="mailto:' + esc(c.email) + '">Email</a>' : '') + '<button class="btn" data-act="copyAll">Скопировать всё</button>' +
-    '<label class="btn file">' + (c.photo ? 'Заменить фото' : 'Загрузить фото') + '<input type="file" accept="image/*,.heic,.heif" data-act="photo"></label>' + (c.photo ? '<button class="btn ai-btn" data-act="aiFix" data-v="' + esc(c.photo) + '" title="ИИ: белый фон и формат 600×600 по правилам DV">' + SPARK + ' AI-формат</button>' : '') + '</div></div>';
+    '<label class="btn file">' + (c.photo ? 'Заменить фото' : 'Загрузить фото') + '<input type="file" accept="image/*,.heic,.heif" data-act="photo"></label>' + (c.photo ? '<button class="btn ai-btn" data-act="aiFix" data-v="' + esc(c.photo) + '" title="ИИ: белый фон и формат 600×600 по правилам DV">' + SPARK + ' AI-формат</button><button class="btn" data-act="cropOpen" data-v="' + esc(c.photo) + '" title="Кадрировать вручную">' + CROPI + ' Кадр</button>' : '') + '</div></div>';
 
   if (s) {
     h += '<section class="card pad" style="display:flex;flex-direction:column;gap:16px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap"><h2 class="sec-title" style="font-size:18px">Подача DV-' + y + '</h2><span class="muted">' + (s.date ? 'анкета ' + esc(s.date) : '') + '</span></div>' +
@@ -2027,7 +2133,7 @@ function renderCard(c, y) {
   fam.forEach(function (m) {
     var mt = thumb(m.photo, 120);
     h += '<div class="fam"><span class="av" style="background:' + avColor(m.name) + '">' + esc(initials(m.name)) + (mt ? '<button class="ph-btn" data-act="photoView" data-v="' + esc(m.photo) + '" data-n="' + esc(m.name) + '" aria-label="Открыть фото"><img src="' + mt + '" alt="" referrerpolicy="no-referrer" onerror="this.remove()"></button>' : '') + '</span><span class="t"><b style="font-weight:600">' + esc(m.name) + '</b><span class="muted">' + esc([m.rel, m.dob, m.place].filter(Boolean).join(' · ')) + '</span></span>' +
-      (m.photo ? '<button class="pill p-paid" data-act="photoView" data-v="' + esc(m.photo) + '" data-n="' + esc(m.name) + '" style="border:0;cursor:pointer">фото</button><button class="ai-chip" data-act="aiFix" data-v="' + esc(m.photo) + '" title="ИИ: белый фон и формат 600×600">' + SPARK + 'AI</button>' : '<span class="pill" style="background:#fbe3e4;color:#9b2730">нет фото</span>') +
+      (m.photo ? '<button class="pill p-paid" data-act="photoView" data-v="' + esc(m.photo) + '" data-n="' + esc(m.name) + '" style="border:0;cursor:pointer">фото</button><button class="ai-chip" data-act="aiFix" data-v="' + esc(m.photo) + '" title="ИИ: белый фон и формат 600×600">' + SPARK + 'AI</button><button class="ai-chip crop-chip" data-act="cropOpen" data-v="' + esc(m.photo) + '" title="Кадрировать вручную">' + CROPI + '</button>' : '<span class="pill" style="background:#fbe3e4;color:#9b2730">нет фото</span>') +
       '<span class="acts"><button class="pen" data-act="memEdit" data-kind="' + m.kind + '" data-i="' + m.idx + '" title="Изменить" aria-label="Изменить">' + PEN + '</button><button class="pen del" data-act="memDel" data-kind="' + m.kind + '" data-i="' + m.idx + '" title="Убрать из заявки" aria-label="Убрать из заявки">' + XIC + '</button></span></div>';
     if (S.memDel === m.kind + m.idx) h += '<div class="fam-del"><span style="flex:1">Убрать <b>' + esc(m.name) + '</b> из заявки?</span><button class="btn sm danger" data-act="memDelYes" data-kind="' + m.kind + '" data-i="' + m.idx + '"' + (S.busy ? ' disabled' : '') + '>Убрать</button><button class="btn sm" data-act="memDelNo">Отмена</button></div>';
   });
@@ -2089,6 +2195,10 @@ document.addEventListener('click', function (e) {
   if (a === 'resend') { L.stage = 'start'; sendCode(); return; }
   if (a === 'logout') { e.preventDefault(); logout(); return; }
   if (!S.data) return;
+  if (a === 'cropOpen') { e.preventDefault(); openCrop(byKey[S.sel], aiTarget(byKey[S.sel], v || (S.lb && S.lb.url))); return; }
+  if (a === 'cropCancel') { S.crop = null; render(); return; }
+  if (a === 'cropAuto' && S.crop) { S.crop.rect = Object.assign({}, S.crop.prep.rect); cropLayout(); return; }
+  if (a === 'cropApply') { cropApply(); return; }
   if (a === 'aiFix') { e.preventDefault(); aiFix(byKey[S.sel], aiTarget(byKey[S.sel], v)); return; }
   if (a === 'aiFixLb') { aiFix(byKey[S.sel], aiTarget(byKey[S.sel], S.lb && S.lb.url)); return; }
   if (a === 'photoView') { e.preventDefault(); S.lb = { url: v, name: el.getAttribute('data-n') || '' }; render(); return; }
@@ -2212,6 +2322,7 @@ document.addEventListener('click', function (e) {
 });
 document.addEventListener('input', function (e) {
   var el = e.target;
+  if (el.id === 'cropZoom' && S.crop) { var b = cropBounds(S.crop.prep); cropSetSize(S.crop, b.max * Math.pow(b.min / b.max, Number(el.value) / 1000)); cropLayout(); return; }
   if (el.id === 'q') { S.q = el.value; render(); }
   else if (el.id === 'ed-in' && S.edit) S.edit.v = el.value;
   else if (el.getAttribute('data-act') === 'passDraft' && S.pass) { var pk = el.getAttribute('data-k'), pv = el.value; if (pk !== 'expiry') { pv = pv.toUpperCase(); el.value = pv; } S.pass[pk] = pv; }
@@ -2248,6 +2359,7 @@ document.addEventListener('change', function (e) {
   }
 });
 document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && S.crop && !S.crop.busy) { S.crop = null; render(); return; }
   if (e.key === 'Escape' && S.lb) { S.lb = null; render(); return; }
   if (e.key === 'Escape' && S.menu) { S.menu = false; render(); }
   if (S.edit && e.target && e.target.id === 'ed-in') {
