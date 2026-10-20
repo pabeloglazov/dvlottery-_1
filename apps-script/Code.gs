@@ -476,7 +476,7 @@ function api_(d) {
       adminSetCurrentSeason: adminSetCurrentSeason, adminAddMember: adminAddMember, adminSetPhoto: adminSetPhoto, adminDeleteClient: adminDeleteClient,
       adminUpdateField: adminUpdateField, adminUpdateMember: adminUpdateMember, adminRemoveMember: adminRemoveMember, adminRemoveFromSeason: adminRemoveFromSeason,
       adminSetPassport: adminSetPassport, adminAddPassportScan: adminAddPassportScan,
-      adminScanPassport: adminScanPassport, adminRemovePassportScan: adminRemovePassportScan, adminCheckPhoto: adminCheckPhoto, adminGetPhoto: adminGetPhoto, adminSetMemberPhoto: adminSetMemberPhoto };
+      adminScanPassport: adminScanPassport, adminRemovePassportScan: adminRemovePassportScan, adminCheckPhoto: adminCheckPhoto, adminGetPhoto: adminGetPhoto, adminSetMemberPhoto: adminSetMemberPhoto, adminClearPassport: adminClearPassport };
     const fn = fns[d.action];
     if (!fn) return { ok: false, error: 'Неизвестное действие' };
     API_AUTH_ = true;
@@ -875,6 +875,18 @@ function adminScanPassport(key, rows, photo) {
   return out;
 }
 
+/** Удалить паспорт целиком: номер, страну, срок и все сканы (файлы остаются в папке). */
+function adminClearPassport(key, rows) {
+  assertOwner_();
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const sh = responsesSheet_(), c = passportCols_(sh), at = clientRow_(sh, key, rows).row;
+    sh.getRange(at, c.passport + 1).setValue('');
+    sh.getRange(at, c.passportScan + 1).setValue('');
+    return true;
+  } finally { lock.releaseLock(); }
+}
+
 /** Убрать скан из карточки (файл остаётся в папке). */
 function adminRemovePassportScan(key, rows, url) {
   assertOwner_();
@@ -1067,6 +1079,9 @@ a{color:var(--green)}
 .btn.lb-ic input{position:absolute;inset:0;opacity:0;cursor:pointer}
 .btn.sm.lb-ic{width:32px;height:32px}.btn.sm.lb-ic svg{width:15px;height:15px}
 .sec-r{display:flex;align-items:center;gap:10px}
+.pp-h .btn.pp-del{width:34px;height:34px;padding:0;display:inline-grid;place-items:center;flex:none}
+.pp-h .btn.pp-del svg{width:16px !important;height:16px !important;flex:none}
+.btn.pp-del:hover{color:var(--red);border-color:#e6b9bd;background:#fbeef0}
 .av-up{position:absolute;inset:0;display:grid;place-items:center;background:rgba(255,255,255,.7);font-size:12px;font-weight:700;color:var(--green);cursor:pointer;opacity:0;transition:opacity .15s}
 .big-av:hover .av-up,.av-up:focus-within{opacity:1}
 .av-up input{position:absolute;inset:0;opacity:0;cursor:pointer}
@@ -1977,6 +1992,7 @@ var CROPI = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke=
 var ICO = function (d) { return '<svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + '</svg>'; };
 var I_REPL = ICO('<path d="M3.5 8a4.5 4.5 0 0 1 7.8-3.1L13 6.5"/><path d="M13 2.8v3.7H9.3"/><path d="M12.5 8a4.5 4.5 0 0 1-7.8 3.1L3 9.5"/><path d="M3 13.2V9.5h3.7"/>');
 var I_DOWN = ICO('<path d="M8 2.5v8M4.5 7L8 10.5 11.5 7M3 13.5h10"/>');
+var I_TRASH = ICO('<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5"/>');
 var I_X = ICO('<path d="M4 4l8 8M12 4l-8 8"/>');
 var I_COPY = ICO('<rect x="5.5" y="5.5" width="8" height="8" rx="1.8"/><path d="M10.5 5.5V3.8A1.3 1.3 0 0 0 9.2 2.5H3.8A1.3 1.3 0 0 0 2.5 3.8v5.4a1.3 1.3 0 0 0 1.3 1.3h1.7"/>');
 var SPARK = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1l1.5 4.5L14 7l-4.5 1.5L8 13l-1.5-4.5L2 7l4.5-1.5z"/><path d="M13 11l.6 1.4L15 13l-1.4.6L13 15l-.6-1.4L11 13l1.4-.6z"/></svg>';
@@ -2017,6 +2033,7 @@ function renderPassport(c, y) {
   if (!editing && !busy) {
     if (P.state === 'need') btns = '<button class="btn sm ghost-red" data-act="passNone">Нет паспорта</button><button class="btn sm" data-act="passEdit">' + PEN.replace('aria-hidden', 'width="14" height="14" aria-hidden') + ' Ввести вручную</button>';
     else if (hasData) btns = '<button class="btn sm" data-act="passEdit">' + PEN.replace('aria-hidden', 'width="14" height="14" aria-hidden') + ' Изменить</button>';
+    if (hasData || P.scans.length) btns += '<button class="btn sm lb-ic pp-del" data-act="passWipe" title="Удалить паспорт: данные и все сканы" aria-label="Удалить паспорт">' + I_TRASH + '</button>';
   }
   var h = '<section class="card pp" data-pp="' + esc(c.key) + '"><div class="pp-h"><h2>Загранпаспорт</h2>' + st + '<span class="sp"></span>' + btns + '</div>';
   if (editing) {
@@ -2260,6 +2277,11 @@ document.addEventListener('click', function (e) {
   else if (a === 'prev' && c) { var j = STATUSES.indexOf(sub(c, y).status); if (j > 0) setStatus(c, y, STATUSES[j - 1]); }
   else if (a === 'passEdit' && c) { var pi = passInfo(c); S.ai = null; S.pass = { key: c.key, number: pi.number || '', country: pi.country || String(c.birthCountry || '').toUpperCase(), expiry: pi.expiry || '' }; render(); var pn = document.getElementById('ps-number'); if (pn) pn.focus(); }
   else if (a === 'aiOk') { S.ai = null; render(); }
+  else if (a === 'passWipe' && c && !S.busy) {
+    if (!confirm('Удалить загранпаспорт ' + c.name + '? Номер, страна, срок и все сканы уберутся из карточки и таблицы. Файлы сканов останутся в папке.')) return;
+    S.busy = true; S.ai = null; S.pass = null; render();
+    run('adminClearPassport', [c.key, c.rows || [c.row]], function () { S.busy = false; c.passport = ''; c.passportScan = ''; render(); toast('Паспорт удалён'); }, function () { S.busy = false; render(); });
+  }
   else if (a === 'aiApply' && c && S.ai && S.ai.apply && !S.busy) {
     var ap = S.ai.apply; S.busy = true; render();
     run('adminSetPassport', [c.key, c.rows || [c.row], { number: ap.number, country: ap.country, expiry: ap.expiry }], function (text) {

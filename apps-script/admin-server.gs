@@ -103,7 +103,7 @@ function api_(d) {
       adminSetCurrentSeason: adminSetCurrentSeason, adminAddMember: adminAddMember, adminSetPhoto: adminSetPhoto, adminDeleteClient: adminDeleteClient,
       adminUpdateField: adminUpdateField, adminUpdateMember: adminUpdateMember, adminRemoveMember: adminRemoveMember, adminRemoveFromSeason: adminRemoveFromSeason,
       adminSetPassport: adminSetPassport, adminAddPassportScan: adminAddPassportScan,
-      adminScanPassport: adminScanPassport, adminRemovePassportScan: adminRemovePassportScan, adminCheckPhoto: adminCheckPhoto, adminGetPhoto: adminGetPhoto, adminSetMemberPhoto: adminSetMemberPhoto };
+      adminScanPassport: adminScanPassport, adminRemovePassportScan: adminRemovePassportScan, adminCheckPhoto: adminCheckPhoto, adminGetPhoto: adminGetPhoto, adminSetMemberPhoto: adminSetMemberPhoto, adminClearPassport: adminClearPassport };
     const fn = fns[d.action];
     if (!fn) return { ok: false, error: 'Неизвестное действие' };
     API_AUTH_ = true;
@@ -500,6 +500,18 @@ function adminScanPassport(key, rows, photo) {
   if (!/\d/.test(cur)) { out.passport = adminSetPassport(key, rows, { number: p.number, country: p.country, expiry: p.expiry }); out.applied = true; }
   else out.passport = cur;
   return out;
+}
+
+/** Удалить паспорт целиком: номер, страну, срок и все сканы (файлы остаются в папке). */
+function adminClearPassport(key, rows) {
+  assertOwner_();
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const sh = responsesSheet_(), c = passportCols_(sh), at = clientRow_(sh, key, rows).row;
+    sh.getRange(at, c.passport + 1).setValue('');
+    sh.getRange(at, c.passportScan + 1).setValue('');
+    return true;
+  } finally { lock.releaseLock(); }
 }
 
 /** Убрать скан из карточки (файл остаётся в папке). */
