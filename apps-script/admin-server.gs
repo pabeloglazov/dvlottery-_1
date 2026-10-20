@@ -556,7 +556,8 @@ function adminAddMember__(row, kind, p) {
   const col = kind === 'spouse' ? c.spouseData : c.kidsData;
   if (col === undefined) throw new Error('В таблице нет колонки для данных семьи — запустите setupFamily()');
   const applicant = String(sh.getRange(row, c.name + 1).getDisplayValue()).toUpperCase();
-  const url = savePhotoFile_(p.photo, String(p.name || '') + (kind === 'spouse' ? ' (SPOUSE OF ' : ' (CHILD OF ') + applicant + ')');
+  const url = savePhotoFile_(p.photo, String(p.name || '') + (kind === 'spouse' ? ' (SPOUSE OF ' : ' (CHILD OF ') + applicant + ')') ||
+    (/^https:\/\/(drive|docs)\.google\.com\//.test(String(p.photoUrl || '')) ? String(p.photoUrl) : '');
   const line = [String(p.name || '').trim().toUpperCase().slice(0, 200), String(p.sex || '').slice(0, 2), String(p.dob || '').slice(0, 10),
     String(p.city || '').trim().toUpperCase().slice(0, 100), String(p.country || '').trim().toUpperCase().slice(0, 100),
     'фото: ' + (url || 'пришлёт в Telegram')].join(', ');

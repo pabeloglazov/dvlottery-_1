@@ -257,6 +257,18 @@ h1{margin:2px 0 0;font-size:30px;font-weight:800;letter-spacing:-.02em;line-heig
 .head-main{flex:1;min-width:220px;display:flex;flex-direction:column;gap:6px}
 .head-actions{display:flex;gap:8px;flex-wrap:wrap}
 .steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.rel{display:flex;flex-direction:column;gap:8px;margin:0 0 12px}
+.rel-i{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:12px;background:#f6f7fa;border:1px solid var(--line2)}
+.rel-i.act{background:#f4f2fd;border-color:#ddd7f7}
+.rel-ic{flex:none;width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:#fff;color:var(--ink3);border:1px solid var(--line2)}
+.rel-i.act .rel-ic{color:#5b4bc4;border-color:#ddd7f7}
+.rel-ic svg{width:14px;height:14px}
+.rel-t{display:flex;flex-direction:column;gap:3px;min-width:0;font-size:14px}
+.rel-top a{color:inherit;font-weight:600}
+.rel-t .muted{font-size:12.5px}
+.rel-note{font-size:12.5px;color:#8a5a00}
+.rel-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}
+.btn.ghost{background:none;border-color:transparent;color:var(--ink3)}
 .hlog-head{display:flex;align-items:center;gap:10px;width:100%;padding:14px 18px;border:0;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer;border-radius:16px}
 .hlog-head h3{margin:0;font-size:16px;font-weight:700}
 .hlog-head .cnt{min-width:22px;height:22px;padding:0 7px;border-radius:999px;background:#eef1f6;color:var(--ink2);font-size:12px;font-weight:700;display:inline-grid;place-items:center;font-variant-numeric:tabular-nums}
@@ -444,6 +456,131 @@ function run(fn, args, ok0, fail) {
   }, function () { toast('Нет связи с сервером. Проверьте интернет.'); fail && fail('network'); });
 }
 
+
+
+/* ---------- родственники: кто кому супруг / ребёнок, по фамилии, адресу, контактам, общим детям и возрасту ---------- */
+function relWords(n) {
+  return String(n || '').toLowerCase().replace(/[а-яё]/g, function (ch) { return TRL[ch]; }).toUpperCase()
+    .replace(/[^A-Z ]/g, ' ').split(/\s+/).filter(function (w) { return w.length > 1; })
+    .map(function (w) { return w.replace(/IY$|II$|YI$|Y$/, 'I').replace(/KH/g, 'H').replace(/IA$|YA$/, 'A').replace(/IE/g, 'E'); });
+}
+function relRoot(w) { w = w.replace(/(SKAIA|SKAYA)$/, 'SK').replace(/SKI$/, 'SK'); return /(OVA|EVA|INA|YNA)$/.test(w) ? w.slice(0, -1) : w; }
+function relSurname(n) { var w = relWords(n); return w.length ? relRoot(w[0]) : ''; }
+function sameName(a, b) {
+  var x = relWords(a), y = relWords(b); if (!x.length || !y.length) return false;
+  var hit = x.filter(function (w) { return y.indexOf(w) !== -1; }).length;
+  return hit >= Math.min(2, Math.min(x.length, y.length)) || (x.length === 1 || y.length === 1) && hit === 1 && relRoot(x[0]) === relRoot(y[0]);
+}
+function relPersonMatch(p, o) { if (!p || !p.name) return false; return sameName(p.name, o.name) && (!p.dob || !o.dob || p.dob === o.dob) || (p.dob && p.dob === o.dob && relWords(p.name).some(function (w) { return relWords(o.name).indexOf(w) !== -1; })); }
+function relAddr(a, b) {
+  var t = function (x) { return String(x || '').toLowerCase().replace(/[а-яё]/g, function (ch) { return TRL[ch]; }).split(/[^a-z0-9]+/).filter(function (w) { return w.length > 2 || /\d/.test(w); }); };
+  var A = t(a), B = t(b); if (A.length < 3 || B.length < 3) return 0;
+  var inter = A.filter(function (w, i) { return A.indexOf(w) === i && B.indexOf(w) !== -1; });
+  var nums = inter.filter(function (w) { return /\d/.test(w); }).length;
+  var j = inter.length / (new Set(A.concat(B))).size;
+  return nums >= 2 || (nums >= 1 && j >= 0.45) || j >= 0.6 ? 1 : 0;
+}
+function relAge(dob) { var m = String(dob || '').match(/^(\d\d)\.(\d\d)\.(\d{4})$/); return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null; }
+function yearsBetween(a, b) { return (b - a) / 31557600000; }
+function relContact(x) { return String(x || '').toLowerCase().replace(/^https?:\/\/(t\.me|telegram\.me)\//, '').replace(/^@/, '').replace(/[^a-z0-9@._]/g, ''); }
+var DV_KID_AGE = 21;
+function married(m) { m = String(m || ''); return /жена|замуж|married/i.test(m) && !/не\s*(жена|замуж)|not\s+married|single/i.test(m); }
+function relSurnames(n) { return relWords(n).map(relRoot).filter(function (w) { return w.length > 2; }); }
+function relNo() { try { return JSON.parse(localStorage.getItem('dv_rel_no') || '{}'); } catch (e) { return {}; } }
+function relPairKey(a, b) { return [a, b].sort().join('||'); }
+
+/** Для клиента c: связанные заявки и предложения. [{o, rel, sure, reasons, acts:[{t, label, kids?}], note}] */
+function relFor(c) {
+  var out = [], no = relNo(), mine = family(c), cDob = relAge(c.dob);
+  var myKids = mine.filter(function (m) { return m.kind === 'child'; }), mySp = mine.filter(function (m) { return m.kind === 'spouse'; })[0];
+  S.data.clients.forEach(function (o) {
+    if (o.key === c.key) return;
+    var theirs = family(o), oKids = theirs.filter(function (m) { return m.kind === 'child'; }), oSp = theirs.filter(function (m) { return m.kind === 'spouse'; })[0];
+    var reasons = [], score = 0, rel = '', sure = false;
+    // явные связи из анкет
+    if (mySp && relPersonMatch(mySp, o) || oSp && relPersonMatch(oSp, c)) { rel = 'spouse'; sure = true; reasons.push(mySp && relPersonMatch(mySp, o) ? 'указан(а) супругом в этой анкете' : 'указал(а) этого клиента супругом в своей анкете'); }
+    else if (myKids.some(function (k) { return relPersonMatch(k, o); })) { rel = 'child'; sure = true; reasons.push('указан(а) ребёнком в этой анкете'); }
+    else if (oKids.some(function (k) { return relPersonMatch(k, c); })) { rel = 'parent'; sure = true; reasons.push('указал(а) этого клиента ребёнком'); }
+    var cs = relSurnames(c.name), os = relSurnames(o.name);
+    var sur = cs.some(function (w) { return os.indexOf(w) !== -1; });
+    if (c.dob && c.dob === o.dob && sur) { out.push({ o: o, rel: 'self', sure: false, reasons: ['та же дата рождения и похожее имя'], acts: [], notes: ['Похоже, это тот же человек — дубль заявки'], pk: relPairKey(c.key, o.key) }); return; }
+    if (sur) { score += 3; reasons.push('одна фамилия'); }
+    if (relAddr(c.address, o.address)) { score += 3; reasons.push('один адрес'); }
+    if (c.email && relContact(c.email) === relContact(o.email)) { score += 3; reasons.push('общий email'); }
+    if (c.telegram && relContact(c.telegram).length > 3 && relContact(c.telegram) === relContact(o.telegram)) { score += 3; reasons.push('общий Telegram'); }
+    var shared = myKids.filter(function (k) { return oKids.some(function (q) { return sameName(k.name, q.name) && (!k.dob || !q.dob || k.dob === q.dob); }); });
+    if (shared.length) { score += 4; reasons.push('общие дети: ' + shared.map(function (k) { return k.name; }).join(', ')); }
+    if (!sure && score < 6) return;
+    var oDob = relAge(o.dob), d = cDob && oDob ? yearsBetween(oDob, cDob) : null; // >0 — o старше
+    if (!rel) {
+      if (d !== null && d >= 16) rel = 'parent';
+      else if (d !== null && d <= -16) rel = 'child';
+      else {
+        var adult = function (x) { var a = relAge(x.dob); return !a || yearsBetween(a, new Date()) >= 18; };
+        if (c.sex && o.sex && c.sex !== o.sex && adult(c) && adult(o) && (shared.length || married(c.marital) || married(o.marital))) rel = 'spouse';
+        else rel = 'sibling';
+      }
+    }
+    var r = { o: o, rel: rel, sure: sure, reasons: reasons, acts: [], notes: [] };
+    var pk = relPairKey(c.key, o.key);
+    if (rel === 'spouse') {
+      if (!mySp) r.acts.push({ t: 'addSpouse', label: 'Вписать ' + (o.sex === 'Ж' ? 'супругой' : 'супругом') + ' в эту заявку' });
+      else if (!relPersonMatch(mySp, o)) r.notes.push('В анкете уже указан(а) другой супруг: ' + mySp.name);
+      var miss = oKids.filter(function (q) { return !myKids.some(function (k) { return sameName(k.name, q.name); }); });
+      if (miss.length) r.acts.push({ t: 'addKids', kids: miss, label: 'Добавить детей из их анкеты (' + miss.length + ')' });
+    } else if (rel === 'child') {
+      var ageNow = cDob && oDob ? yearsBetween(oDob, new Date()) : null;
+      var listed = myKids.some(function (k) { return relPersonMatch(k, o); });
+      if (!listed) {
+        if (ageNow !== null && ageNow >= DV_KID_AGE) r.notes.push('Ему/ей уже ' + Math.floor(ageNow) + ' — в заявку родителя не вписать (до 21 года)');
+        else if (married(o.marital)) r.notes.push('В браке — в заявку родителя не вписать');
+        else r.acts.push({ t: 'addChild', label: 'Вписать ребёнком в эту заявку' });
+      }
+    } else if (rel === 'parent') {
+      var listed2 = oKids.some(function (k) { return relPersonMatch(k, c); });
+      var myAge = cDob ? yearsBetween(cDob, new Date()) : null;
+      if (!listed2) {
+        if (myAge !== null && myAge >= DV_KID_AGE) r.notes.push('Этому клиенту уже ' + Math.floor(myAge) + ' — в заявку родителя не вписать');
+        else r.acts.push({ t: 'toParent', label: 'Вписать этого клиента ребёнком в их заявку' });
+      }
+    }
+    r.dismissed = !!no[pk];
+    r.pk = pk;
+    out.push(r);
+  });
+  out.sort(function (a, b) { return (b.acts.length ? 1 : 0) - (a.acts.length ? 1 : 0) || (b.sure ? 1 : 0) - (a.sure ? 1 : 0); });
+  return out;
+}
+var REL_NAME = { spouse: function (o) { return o.sex === 'Ж' ? 'жена' : o.sex === 'М' ? 'муж' : 'супруг(а)'; }, child: function (o) { return o.sex === 'Ж' ? 'дочь' : o.sex === 'М' ? 'сын' : 'ребёнок'; },
+  parent: function (o) { return o.sex === 'Ж' ? 'мама' : o.sex === 'М' ? 'папа' : 'родитель'; }, sibling: function (o) { return o.sex === 'Ж' ? 'сестра' : o.sex === 'М' ? 'брат' : 'родственник'; }, self: function () { return 'дубль'; } };
+function relPending() { return S.data.clients.filter(function (c) { return relFor(c).some(function (r) { return r.acts.length && !r.dismissed; }); }); }
+function renderRel(c) {
+  var list = relFor(c).filter(function (r) { return !r.dismissed || r.sure; });
+  if (!list.length) return '';
+  var h = '<div class="rel">';
+  list.forEach(function (r) {
+    var o = r.o, act = r.acts.length && !r.dismissed;
+    h += '<div class="rel-i' + (act ? ' act' : '') + '"><span class="rel-ic">' + (act ? SPARK : I_LINK) + '</span><span class="rel-t"><span class="rel-top">' + (r.sure ? '' : 'Возможно, ') + '<b>' + esc(REL_NAME[r.rel](o)) + '</b> — <a href="' + clientHref(o.key) + '" data-act="open" data-v="' + esc(o.key) + '">' + esc(o.name) + '</a>' + (o.dob ? ' <span class="muted">' + esc(o.dob) + '</span>' : '') + '</span>' +
+      '<span class="muted">' + esc(r.reasons.join(' · ')) + '</span>' + r.notes.map(function (n) { return '<span class="rel-note">' + esc(n) + '</span>'; }).join('') +
+      (act ? '<span class="rel-acts">' + r.acts.map(function (a, i) { return '<button class="btn sm' + (i === 0 ? ' pri' : '') + '" data-act="relDo" data-v="' + esc(o.key) + '" data-i="' + i + '"' + (S.busy ? ' disabled' : '') + '>' + esc(a.label) + '</button>'; }).join('') +
+        (r.sure ? '' : '<button class="btn sm ghost" data-act="relNo" data-v="' + esc(r.pk) + '">Не родственники</button>') + '</span>' : '') + '</span></div>';
+  });
+  return h + '</div>';
+}
+function kidParts(k) { var pl = String(k.place || '').split(',').map(function (x) { return x.trim(); }); return { name: k.name, sex: k.sex, dob: k.dob, city: pl[0] || '', country: pl[1] || '', photoUrl: k.photo || '' }; }
+function relDo(c, okey, i) {
+  var r = relFor(c).filter(function (x) { return x.o.key === okey; })[0]; if (!r || !r.acts[i] || S.busy) return;
+  var a = r.acts[i], o = r.o;
+  var who = function (x) { return { name: x.name, sex: x.sex, dob: x.dob, city: x.birthCity, country: x.birthCountry, photoUrl: /^https?:/.test(x.photo || '') ? x.photo : '' }; };
+  var jobs = a.t === 'addSpouse' ? [[c.row, 'spouse', who(o)]] : a.t === 'addChild' ? [[c.row, 'child', who(o)]] : a.t === 'toParent' ? [[o.row, 'child', who(c)]]
+    : a.kids.map(function (k) { return [c.row, 'child', kidParts(k)]; });
+  S.busy = true; render();
+  var step = function (n) {
+    if (n >= jobs.length) { S.busy = false; toast(a.t === 'addSpouse' ? 'Супруг(а) вписан(а)' : a.t === 'toParent' ? 'Вписан(а) ребёнком к ' + o.name : 'Дети добавлены'); load(true); return; }
+    run('adminAddMember', jobs[n], function () { step(n + 1); }, function () { S.busy = false; load(true); });
+  };
+  step(0);
+}
 
 /* ---------- история изменений ---------- */
 function histStale() { if (S.hist) loadHist(S.hist.key, true); if (S.histAll) loadHist('', true); }
@@ -1151,6 +1288,10 @@ function renderOverview(y) {
   h += block('Подавались раньше — пригласить снова', inv.length, inv, 'Все прошлые клиенты уже в этом сезоне.', {
     view: 'invite', meta: function (c) { return seasonsOf(c).map(function (s) { return 'DV-' + s; }).join(', ') + ' · ' + (c.telegram || ''); },
     html: function (c) { return '<button class="btn sm soft" data-act="add" data-y="' + S.data.current + '" data-v="' + esc(c.key) + '">В DV-' + S.data.current + '</button>'; } });
+  var fams = relPending();
+  if (fams.length) h += block('Семьи — можно дополнить заявки', fams.length, fams, '', {
+    view: 'everyone', meta: function (c) { var r = relFor(c).filter(function (x) { return x.acts.length && !x.dismissed; })[0]; return (r.sure ? '' : 'возможно, ') + REL_NAME[r.rel](r.o) + ': ' + r.o.name; },
+    html: function (c) { return '<a class="btn sm" href="' + clientHref(c.key) + '" data-act="open" data-v="' + esc(c.key) + '">Открыть</a>'; } });
   if (!S.histAll) loadHist('', true);
   h += '</div>' + histSection('all', 'Последние изменения', '', S.histAll, true, 'margin-top:16px');
   return h;
@@ -1161,6 +1302,7 @@ var ICO = function (d) { return '<svg width="17" height="17" viewBox="0 0 16 16"
 var I_REPL = ICO('<path d="M3.5 8a4.5 4.5 0 0 1 7.8-3.1L13 6.5"/><path d="M13 2.8v3.7H9.3"/><path d="M12.5 8a4.5 4.5 0 0 1-7.8 3.1L3 9.5"/><path d="M3 13.2V9.5h3.7"/>');
 var I_DOWN = ICO('<path d="M8 2.5v8M4.5 7L8 10.5 11.5 7M3 13.5h10"/>');
 var I_TRASH = ICO('<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5"/>');
+var I_LINK = ICO('<path d="M6.5 9.5l3-3"/><path d="M7 4.5l1.2-1.2a2.6 2.6 0 0 1 3.7 3.7L10.7 8.2"/><path d="M9 11.5l-1.2 1.2a2.6 2.6 0 0 1-3.7-3.7L5.3 7.8"/>');
 var I_X = ICO('<path d="M4 4l8 8M12 4l-8 8"/>');
 var I_COPY = ICO('<rect x="5.5" y="5.5" width="8" height="8" rx="1.8"/><path d="M10.5 5.5V3.8A1.3 1.3 0 0 0 9.2 2.5H3.8A1.3 1.3 0 0 0 2.5 3.8v5.4a1.3 1.3 0 0 0 1.3 1.3h1.7"/>');
 var SPARK = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1l1.5 4.5L14 7l-4.5 1.5L8 13l-1.5-4.5L2 7l4.5-1.5z"/><path d="M13 11l.6 1.4L15 13l-1.4.6L13 15l-.6-1.4L11 13l1.4-.6z"/></svg>';
@@ -1352,7 +1494,7 @@ function renderCard(c, y) {
     var ss = sub(c, x), res = ss.result || (ss.status === 'Подано' ? 'Ждём результат' : ss.status);
     h += '<div class="hist"><b>DV-' + x + '</b><span style="min-width:0"><span style="display:block;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis">' + esc(ss.number || 'номера нет') + '</span><span class="muted">' + (ss.paid ? 'оплата ' + esc(ss.paid) : 'без отметки оплаты') + '</span></span>' + (PILL[res] ? pill(res) : '<span class="pill p-new">' + esc(res) + '</span>') + '</div>';
   });
-  h += '</section><section class="card pad"><h2 class="sec-title" style="font-size:18px;margin-bottom:8px">Семья в заявке</h2>';
+  h += '</section><section class="card pad"><h2 class="sec-title" style="font-size:18px;margin-bottom:8px">Семья в заявке</h2>' + renderRel(c);
   fam.forEach(function (m) {
     var mt = thumb(m.photo, 120);
     h += '<div class="fam"><span class="av" style="background:' + avColor(m.name) + '">' + esc(initials(m.name)) + (mt ? '<button class="ph-btn" data-act="photoView" data-v="' + esc(m.photo) + '" data-n="' + esc(m.name) + '" aria-label="Открыть фото"><img src="' + mt + '" alt="" referrerpolicy="no-referrer" onerror="this.remove()"></button>' : '') + '</span><span class="t"><b style="font-weight:600">' + esc(m.name) + '</b><span class="muted">' + esc([m.rel, m.dob, m.place].filter(Boolean).join(' · ')) + '</span></span>' +
@@ -1428,6 +1570,8 @@ document.addEventListener('click', function (e) {
   if (a === 'aiFix') { e.preventDefault(); aiFix(byKey[S.sel], aiTarget(byKey[S.sel], v)); return; }
   if (a === 'aiFixLb') { if (S.lb && !(S.lb.ai && !S.lb.ai.done)) lbAi(byKey[S.sel], aiTarget(byKey[S.sel], S.lb.url), null); return; }
   if (a === 'histRevert') { histRevert(v); return; }
+  if (a === 'relDo') { relDo(byKey[S.sel], v, Number(el.getAttribute('data-i'))); return; }
+  if (a === 'relNo') { var rn = relNo(); rn[v] = 1; try { localStorage.setItem('dv_rel_no', JSON.stringify(rn)); } catch (e3) {} toast('Подсказка скрыта'); render(); return; }
   if (a === 'histFold') { HFOLD[v] = histOpen(v); try { localStorage.setItem('dv_hist_fold', JSON.stringify(HFOLD)); } catch (e2) {} render(); return; }
   if (a === 'histMore') { S.histMore = v; render(); return; }
   if (a === 'photoView') { e.preventDefault(); S.lb = { url: v, name: el.getAttribute('data-n') || '' }; render(); return; }
