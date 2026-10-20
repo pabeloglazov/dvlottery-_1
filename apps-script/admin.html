@@ -312,6 +312,7 @@ h1{margin:2px 0 0;font-size:30px;font-weight:800;letter-spacing:-.02em;line-heig
 .field input,.field select{padding:9px 11px;border:1px solid var(--line);border-radius:9px;font-size:14.5px;color:var(--ink);background:#fbfcfd;width:100%}
 .field input:focus,.field select:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px rgba(46,106,78,.18);background:#fff}
 .hist{display:grid;grid-template-columns:80px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--line2)}
+.fam-link{font-weight:600;color:inherit;text-decoration:none;border-bottom:1px solid rgba(20,33,64,.25)}.fam-link:hover{border-bottom-color:currentColor}
 .fam{display:flex;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--line2)}
 .fam .t{flex:1;min-width:0;display:flex;flex-direction:column}
 .frow{display:flex;align-items:center;gap:4px;border-top:1px solid var(--line2)}.frow .copy{border-top:0;flex:1;min-width:0}
@@ -561,8 +562,10 @@ function relFor(c) {
 var REL_NAME = { spouse: function (o) { return o.sex === 'Ж' ? 'жена' : o.sex === 'М' ? 'муж' : 'супруг(а)'; }, child: function (o) { return o.sex === 'Ж' ? 'дочь' : o.sex === 'М' ? 'сын' : 'ребёнок'; },
   parent: function (o) { return o.sex === 'Ж' ? 'мама' : o.sex === 'М' ? 'папа' : 'родитель'; }, sibling: function (o) { return o.sex === 'Ж' ? 'сестра' : o.sex === 'М' ? 'брат' : 'родственник'; }, self: function () { return 'дубль'; } };
 function relPending() { return S.data.clients.filter(function (c) { return relFor(c).some(function (r) { return r.acts.length && !r.dismissed; }); }); }
+function memberCard(m, c) { return S.data.clients.filter(function (o) { return o.key !== c.key && relPersonMatch(m, o); })[0] || null; }
 function renderRel(c) {
-  var list = relFor(c).filter(function (r) { return !r.dismissed || r.sure; });
+  // Только то, что требует внимания: предложения, дубли, замечания. Уже вписанные родственники видны в списке семьи (имя — ссылка на карточку).
+  var list = relFor(c).filter(function (r) { return (r.acts.length && !r.dismissed) || r.notes.length && !r.dismissed && r.rel !== 'sibling'; });
   if (!list.length) return '';
   var h = '<div class="rel">';
   list.forEach(function (r) {
@@ -1515,7 +1518,7 @@ function renderCard(c, y) {
   h += '</section><section class="card pad"><h2 class="sec-title" style="font-size:18px;margin-bottom:8px">Семья в заявке</h2>' + renderRel(c);
   fam.forEach(function (m) {
     var mt = thumb(m.photo, 120);
-    h += '<div class="fam"><span class="av" style="background:' + avColor(m.name) + '">' + esc(initials(m.name)) + (mt ? '<button class="ph-btn" data-act="photoView" data-v="' + esc(m.photo) + '" data-n="' + esc(m.name) + '" aria-label="Открыть фото"><img src="' + mt + '" alt="" referrerpolicy="no-referrer" onerror="this.remove()"></button>' : '') + '</span><span class="t"><b style="font-weight:600">' + esc(m.name) + '</b><span class="muted">' + esc([m.rel, m.dob, m.place].filter(Boolean).join(' · ')) + '</span></span>' +
+    h += '<div class="fam"><span class="av" style="background:' + avColor(m.name) + '">' + esc(initials(m.name)) + (mt ? '<button class="ph-btn" data-act="photoView" data-v="' + esc(m.photo) + '" data-n="' + esc(m.name) + '" aria-label="Открыть фото"><img src="' + mt + '" alt="" referrerpolicy="no-referrer" onerror="this.remove()"></button>' : '') + '</span><span class="t">' + (function () { var mc = memberCard(m, c); return mc ? '<a class="fam-link" href="' + clientHref(mc.key) + '" data-act="open" data-v="' + esc(mc.key) + '" title="Открыть карточку">' + esc(m.name) + '</a>' : '<b style="font-weight:600">' + esc(m.name) + '</b>'; })() + '<span class="muted">' + esc([m.rel, m.dob, m.place].filter(Boolean).join(' · ')) + '</span></span>' +
       (m.photo ? '<button class="pill p-paid" data-act="photoView" data-v="' + esc(m.photo) + '" data-n="' + esc(m.name) + '" style="border:0;cursor:pointer">фото</button>' : '<span class="pill" style="background:#fbe3e4;color:#9b2730">нет фото</span>') +
       '<span class="acts"><button class="pen" data-act="memEdit" data-kind="' + m.kind + '" data-i="' + m.idx + '" title="Изменить" aria-label="Изменить">' + PEN + '</button><button class="pen del" data-act="memDel" data-kind="' + m.kind + '" data-i="' + m.idx + '" title="Убрать из заявки" aria-label="Убрать из заявки">' + XIC + '</button></span></div>';
     if (S.memDel === m.kind + m.idx) h += '<div class="fam-del"><span style="flex:1">Убрать <b>' + esc(m.name) + '</b> из заявки?</span><button class="btn sm danger" data-act="memDelYes" data-kind="' + m.kind + '" data-i="' + m.idx + '"' + (S.busy ? ' disabled' : '') + '>Убрать</button><button class="btn sm" data-act="memDelNo">Отмена</button></div>';
