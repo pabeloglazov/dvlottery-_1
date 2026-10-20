@@ -103,7 +103,7 @@ function api_(d) {
       adminSetCurrentSeason: adminSetCurrentSeason, adminAddMember: adminAddMember, adminSetPhoto: adminSetPhoto, adminDeleteClient: adminDeleteClient,
       adminUpdateField: adminUpdateField, adminUpdateMember: adminUpdateMember, adminRemoveMember: adminRemoveMember, adminRemoveFromSeason: adminRemoveFromSeason,
       adminSetPassport: adminSetPassport, adminAddPassportScan: adminAddPassportScan,
-      adminScanPassport: adminScanPassport, adminRemovePassportScan: adminRemovePassportScan, adminCheckPhoto: adminCheckPhoto, adminGetPhoto: adminGetPhoto, adminSetMemberPhoto: adminSetMemberPhoto, adminClearPassport: adminClearPassport };
+      adminScanPassport: adminScanPassport, adminRemovePassportScan: adminRemovePassportScan, adminCheckPhoto: adminCheckPhoto, adminGetPhoto: adminGetPhoto, adminSetMemberPhoto: adminSetMemberPhoto, adminClearPassport: adminClearPassport, adminHistory: adminHistory, adminRevert: adminRevert };
     const fn = fns[d.action];
     if (!fn) return { ok: false, error: 'Неизвестное действие' };
     API_AUTH_ = true;
@@ -240,7 +240,7 @@ function findSubRow_(sh, key, season) {
 }
 
 /** Сохранить подачу клиента за сезон (статус, оплата, номер, результат, заметка). */
-function adminSaveSub(key, name, row, season, sub) {
+function adminSaveSub__(key, name, row, season, sub) {
   assertOwner_();
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
@@ -257,7 +257,7 @@ function adminSaveSub(key, name, row, season, sub) {
 }
 
 /** Добавить клиентов в сезон со статусом «Новая». list: [{key, name, row}] */
-function adminAddToSeason(list, season) {
+function adminAddToSeason__(list, season) {
   assertOwner_();
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
@@ -279,7 +279,7 @@ function adminAddToSeason(list, season) {
 }
 
 /** Удалить клиента: его строки анкеты (лист ответов) и все его подачи (лист «Подачи»). */
-function adminDeleteClient(key, rows) {
+function adminDeleteClient__(key, rows) {
   assertOwner_();
   key = String(key || '');
   if (!key) throw new Error('Нет клиента');
@@ -326,7 +326,7 @@ function parseDob_(s) {
 }
 
 /** Изменить поле клиента. Имя и дата рождения — во всех его строках (они образуют ключ), остальное — в последней строке. */
-function adminUpdateField(key, rows, field, value) {
+function adminUpdateField__(key, rows, field, value) {
   assertOwner_();
   const colKey = EDITABLE_[field];
   if (!colKey) throw new Error('Это поле нельзя менять');
@@ -378,7 +378,7 @@ function writeFamily_(f, kind, row) {
 }
 
 /** Изменить супруга(у) или ребёнка (kind: 'spouse' | 'child', idx — номер в списке). Новое фото — в папку. */
-function adminUpdateMember(row, kind, idx, p) {
+function adminUpdateMember__(row, kind, idx, p) {
   assertOwner_();
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
@@ -396,7 +396,7 @@ function adminUpdateMember(row, kind, idx, p) {
 }
 
 /** Убрать супруга(у) или ребёнка из заявки. */
-function adminRemoveMember(row, kind, idx) {
+function adminRemoveMember__(row, kind, idx) {
   assertOwner_();
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
@@ -409,7 +409,7 @@ function adminRemoveMember(row, kind, idx) {
 }
 
 /** Убрать клиента из сезона: анкета и данные остаются, в «Подачах» ставится отметка «Убран». */
-function adminRemoveFromSeason(key, name, row, season) {
+function adminRemoveFromSeason__(key, name, row, season) {
   assertOwner_();
   season = Number(season);
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
@@ -445,7 +445,7 @@ function passportCols_(sh) {
 }
 
 /** Паспорт клиента: { number, country, expiry: 'ДД.ММ.ГГГГ' } | { none: true } | { clear: true }. */
-function adminSetPassport(key, rows, p) {
+function adminSetPassport__(key, rows, p) {
   assertOwner_();
   p = p || {};
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
@@ -467,7 +467,7 @@ function adminSetPassport(key, rows, p) {
 }
 
 /** Добавить скан паспорта: файл — в папку с фото, ссылка — в таблицу. */
-function adminAddPassportScan(key, rows, photo) {
+function adminAddPassportScan__(key, rows, photo) {
   assertOwner_();
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
@@ -486,8 +486,8 @@ function adminAddPassportScan(key, rows, photo) {
 
 /** Скан + распознавание: скан сохраняется всегда; данные паспорта пишутся сами, если их ещё не было.
  *  Если в таблице уже другой паспорт — возвращает распознанное, чтобы админ решил, заменять ли. */
-function adminScanPassport(key, rows, photo) {
-  const scans = adminAddPassportScan(key, rows, photo);
+function adminScanPassport__(key, rows, photo) {
+  const scans = adminAddPassportScan__(key, rows, photo);
   const out = { scans: scans, parsed: null, applied: false, same: false, passport: null, error: '' };
   try { out.parsed = recognizePassport_(photo); } catch (e) { out.error = String(e && e.message || e); return out; }
   const p = out.parsed;
@@ -497,13 +497,13 @@ function adminScanPassport(key, rows, photo) {
   const ex = parseDob_(p.expiry);
   const text = passportText_(p.number, p.country || '', ex.getDate(), ex.getMonth() + 1, ex.getFullYear());
   if (cur === text) { out.same = true; out.passport = cur; return out; }
-  if (!/\d/.test(cur)) { out.passport = adminSetPassport(key, rows, { number: p.number, country: p.country, expiry: p.expiry }); out.applied = true; }
+  if (!/\d/.test(cur)) { out.passport = adminSetPassport__(key, rows, { number: p.number, country: p.country, expiry: p.expiry }); out.applied = true; }
   else out.passport = cur;
   return out;
 }
 
 /** Удалить паспорт целиком: номер, страну, срок и все сканы (файлы остаются в папке). */
-function adminClearPassport(key, rows) {
+function adminClearPassport__(key, rows) {
   assertOwner_();
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
@@ -515,7 +515,7 @@ function adminClearPassport(key, rows) {
 }
 
 /** Убрать скан из карточки (файл остаётся в папке). */
-function adminRemovePassportScan(key, rows, url) {
+function adminRemovePassportScan__(key, rows, url) {
   assertOwner_();
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
@@ -546,7 +546,7 @@ function savePhotoFile_(photo, label) {
 }
 
 /** Добавить супруга(у) или ребёнка в анкету клиента. p: {name, sex, dob:'dd.mm.yyyy', city, country, photo?} */
-function adminAddMember(row, kind, p) {
+function adminAddMember__(row, kind, p) {
   assertOwner_();
   row = Number(row);
   const sh = responsesSheet_();
@@ -585,7 +585,7 @@ function adminGetPhoto(url) {
 }
 
 /** Заменить только фото родственника (остальные данные строки не трогаем). */
-function adminSetMemberPhoto(row, kind, idx, photo) {
+function adminSetMemberPhoto__(row, kind, idx, photo) {
   assertOwner_();
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
@@ -606,7 +606,7 @@ function adminCheckPhoto(photo) {
 }
 
 /** Обновить фото заявителя из админки. extra: { original, check } — оригинал и результат ИИ-проверки. */
-function adminSetPhoto(row, photo, extra) {
+function adminSetPhoto__(row, photo, extra) {
   assertOwner_();
   row = Number(row);
   const sh = responsesSheet_();
@@ -644,4 +644,238 @@ function adminPage_() {
     .setTitle('Заявки DV Lottery')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+
+// Публичные действия админки — через журнал изменений.
+function adminSaveSub() { return logged_('adminSaveSub', adminSaveSub__, Array.prototype.slice.call(arguments)); }
+function adminAddToSeason() { return logged_('adminAddToSeason', adminAddToSeason__, Array.prototype.slice.call(arguments)); }
+function adminDeleteClient() { return logged_('adminDeleteClient', adminDeleteClient__, Array.prototype.slice.call(arguments)); }
+function adminUpdateField() { return logged_('adminUpdateField', adminUpdateField__, Array.prototype.slice.call(arguments)); }
+function adminUpdateMember() { return logged_('adminUpdateMember', adminUpdateMember__, Array.prototype.slice.call(arguments)); }
+function adminRemoveMember() { return logged_('adminRemoveMember', adminRemoveMember__, Array.prototype.slice.call(arguments)); }
+function adminRemoveFromSeason() { return logged_('adminRemoveFromSeason', adminRemoveFromSeason__, Array.prototype.slice.call(arguments)); }
+function adminSetPassport() { return logged_('adminSetPassport', adminSetPassport__, Array.prototype.slice.call(arguments)); }
+function adminAddPassportScan() { return logged_('adminAddPassportScan', adminAddPassportScan__, Array.prototype.slice.call(arguments)); }
+function adminScanPassport() { return logged_('adminScanPassport', adminScanPassport__, Array.prototype.slice.call(arguments)); }
+function adminClearPassport() { return logged_('adminClearPassport', adminClearPassport__, Array.prototype.slice.call(arguments)); }
+function adminRemovePassportScan() { return logged_('adminRemovePassportScan', adminRemovePassportScan__, Array.prototype.slice.call(arguments)); }
+function adminAddMember() { return logged_('adminAddMember', adminAddMember__, Array.prototype.slice.call(arguments)); }
+function adminSetMemberPhoto() { return logged_('adminSetMemberPhoto', adminSetMemberPhoto__, Array.prototype.slice.call(arguments)); }
+function adminSetPhoto() { return logged_('adminSetPhoto', adminSetPhoto__, Array.prototype.slice.call(arguments)); }
+
+// ---------- История изменений и откат ----------
+// Каждое действие админки снимает «до» и «после» листов «Заявки» и «Подачи», разницу пишет в лист «История».
+// Откат возвращает старые значения (и удалённые строки), если после этого ничего не меняли (или с подтверждением).
+const HIST_SHEET = 'История';
+const HIST_HEADERS = ['Время', 'Клиент', 'Действие', 'Что изменилось', 'Ключи', 'ID', 'Откат', 'Данные'];
+const ACTION_NAMES_ = {
+  adminSaveSub: 'Сезон: статус / оплата / номер', adminAddToSeason: 'Добавлен в сезон', adminDeleteClient: 'Заявка удалена',
+  adminUpdateField: 'Изменены данные', adminUpdateMember: 'Изменён член семьи', adminRemoveMember: 'Убран член семьи',
+  adminRemoveFromSeason: 'Убран из сезона', adminSetPassport: 'Паспорт изменён', adminAddPassportScan: 'Добавлен скан паспорта',
+  adminScanPassport: 'Скан паспорта (ИИ)', adminClearPassport: 'Паспорт удалён', adminRemovePassportScan: 'Убран скан паспорта',
+  adminAddMember: 'Добавлен член семьи', adminSetMemberPhoto: 'Фото члена семьи', adminSetPhoto: 'Фото заявителя', adminRevert: 'Откат'
+};
+const FIELD_NAMES_ = { ts: 'Дата анкеты', name: 'Имя', sex: 'Пол', birth: 'Дата рождения', birthCity: 'Город рождения', birthCountry: 'Страна рождения',
+  photoNew: 'Фото', photoOld: 'Фото (анкета)', address: 'Адрес', country: 'Страна проживания', email: 'Email', education: 'Образование',
+  marital: 'Семейное положение', children: 'Дети', telegram: 'Telegram', spouseData: 'Супруг(а)', kidsData: 'Дети (данные)',
+  passport: 'Паспорт', passportScan: 'Сканы паспорта', photoCheck: 'Проверка фото', confirm: 'Номер подтверждения', result: 'Результат', status: 'Статус', note: 'Заметка' };
+let LOGGING_ = false;
+
+function histSheet_() {
+  const ss = responsesSheet_().getParent();
+  let sh = ss.getSheetByName(HIST_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(HIST_SHEET);
+    sh.getRange(1, 1, 1, HIST_HEADERS.length).setValues([HIST_HEADERS]).setFontWeight('bold');
+    sh.setFrozenRows(1);
+    sh.setColumnWidth(4, 520); sh.hideColumns(5, 2); sh.hideColumns(8);
+  }
+  return sh;
+}
+function ser_(v) { return v instanceof Date ? { d: v.toISOString() } : (v === null || v === undefined ? '' : v); }
+function deser_(v) { return v && typeof v === 'object' && v.d ? new Date(v.d) : v; }
+function same_(a, b) {
+  const s = function (x) { x = ser_(x); return typeof x === 'object' ? JSON.stringify(x) : String(x).trim(); };
+  return s(a) === s(b);
+}
+function show_(v) {
+  v = deser_(v);
+  if (v instanceof Date) return Utilities.formatDate(v, Session.getScriptTimeZone(), v.getHours() || v.getMinutes() ? 'dd.MM.yyyy HH:mm' : 'dd.MM.yyyy');
+  return String(v === null || v === undefined ? '' : v);
+}
+function snap_() {
+  const r = responsesSheet_(), ss = r.getParent(), s = ss.getSheetByName(SUBS_SHEET);
+  const rv = r.getDataRange().getValues();
+  return { R: rv, S: s ? s.getDataRange().getValues() : [SUBS_HEADERS] };
+}
+// Ключ строки, по которому её можно найти, даже если строки сдвинулись.
+function rowId_(sheet, row, c) {
+  if (sheet === 'R') return JSON.stringify(ser_(row[c.ts !== undefined ? c.ts : 0])) + '|' + String(row[c.name] || '').trim().toUpperCase();
+  return String(row[1]) + '|' + String(row[2]);
+}
+function clientKeyOf_(sheet, row, c) {
+  if (sheet === 'R') return String(row[c.name] || '').trim() ? keyOf_(String(row[c.name]).trim(), fmtDate_(row[c.birth], 'dd.MM.yyyy')) : '';
+  return String(row[1] || '');
+}
+function diff_(a, b) {
+  const out = [], keys = {}, names = {};
+  ['R', 'S'].forEach(function (sheet) {
+    const A = a[sheet], B = b[sheet];
+    const head = (B[0] || A[0] || []).map(String);
+    const c = sheet === 'R' ? colIndex_(head) : {};
+    const note = function (row) { const k = clientKeyOf_(sheet, row, c); if (k) { keys[k] = 1; names[k.split('|')[0]] = 1; } };
+    const cellsOf = function (ra, rb, rowNo) {
+      const w = Math.max(ra.length, rb.length);
+      for (let j = 0; j < w; j++) {
+        if (sheet === 'S' && j === 9) continue; // «Обновлено»
+        const x = ra[j] === undefined ? '' : ra[j], y = rb[j] === undefined ? '' : rb[j];
+        if (same_(x, y)) continue;
+        out.push({ t: 'cell', s: sheet, r: rowNo, id: rowId_(sheet, rb, c), c: j + 1, h: String(head[j] || ''), b: ser_(x), a: ser_(y) });
+        note(ra); note(rb);
+      }
+    };
+    if (A.length === B.length) {
+      for (let i = 1; i < A.length; i++) cellsOf(A[i], B[i], i + 1);
+      return;
+    }
+    // Строк стало больше или меньше — сопоставляем по ключу строки.
+    const idx = {};
+    for (let i = 1; i < B.length; i++) { const id = rowId_(sheet, B[i], c); (idx[id] = idx[id] || []).push(i); }
+    const used = {};
+    for (let i = 1; i < A.length; i++) {
+      const id = rowId_(sheet, A[i], c), list = idx[id] || [];
+      const j = list.filter(function (k) { return !used[k]; })[0];
+      if (j === undefined) { out.push({ t: 'del', s: sheet, r: i + 1, id: id, v: A[i].map(ser_) }); note(A[i]); continue; }
+      used[j] = 1; cellsOf(A[i], B[j], j + 1);
+    }
+    for (let j = 1; j < B.length; j++) if (!used[j]) { out.push({ t: 'add', s: sheet, r: j + 1, id: rowId_(sheet, B[j], c), v: B[j].map(ser_) }); note(B[j]); }
+  });
+  return { changes: out, keys: Object.keys(keys), names: Object.keys(names) };
+}
+function label_(ch) {
+  if (ch.s === 'S') return (ch.h || 'Подачи') + (ch.id ? ' (DV-' + String(ch.id).split('|').pop() + ')' : '');
+  const c = colIndex_([ch.h]);
+  const k = Object.keys(c)[0];
+  return FIELD_NAMES_[k] || ch.h || ('Колонка ' + ch.c);
+}
+function visible_(ch) { return !(ch.t === 'cell' && ch.s === 'S' && (ch.c === 1 || ch.c === 2)); }
+function summary_(changes) {
+  return changes.filter(visible_).map(function (ch) {
+    if (ch.t === 'del') return (ch.s === 'R' ? 'Удалена строка анкеты ' : 'Удалена строка подачи ') + ch.r;
+    if (ch.t === 'add') return (ch.s === 'R' ? 'Добавлена строка анкеты ' : 'Добавлена подача ') + ch.r;
+    const cut = function (x) { x = show_(x); return x.length > 140 ? x.slice(0, 140) + '…' : x; };
+    return label_(ch) + ': «' + cut(ch.b) + '» → «' + cut(ch.a) + '»';
+  }).join('\n');
+}
+
+/** Обёртка для действий админки: выполнить и записать, что изменилось. */
+function logged_(action, fn, args, meta) {
+  if (LOGGING_) return fn.apply(null, args);
+  LOGGING_ = true;
+  let before = null;
+  try { before = snap_(); } catch (e) { before = null; }
+  try {
+    const res = fn.apply(null, args);
+    if (before) {
+      try {
+        SpreadsheetApp.flush();
+        const d = diff_(before, snap_());
+        if (d.changes.length) {
+          let data = JSON.stringify(d.changes);
+          if (data.length > 49000) data = '';
+          const id = Utilities.getUuid().slice(0, 8);
+          histSheet_().appendRow([new Date(), d.names.join(', '), (meta && meta.label) || ACTION_NAMES_[action] || action,
+            summary_(d.changes).slice(0, 49000), d.keys.join('\n'), id, data ? '' : 'нельзя (слишком большое)', data]);
+        }
+      } catch (e) { console.warn('История: ' + e); }
+    }
+    return res;
+  } finally { LOGGING_ = false; }
+}
+
+/** История: по клиенту (с учётом переименований) или последние изменения по всем. */
+function adminHistory(key, limit) {
+  assertOwner_();
+  const sh = histSheet_();
+  const n = sh.getLastRow();
+  if (n < 2) return [];
+  const v = sh.getRange(2, 1, n - 1, HIST_HEADERS.length).getValues();
+  const want = {}; if (key) want[key] = 1;
+  const out = [];
+  limit = Number(limit) || (key ? 100 : 40);
+  for (let i = v.length - 1; i >= 0 && out.length < limit; i--) {
+    const ks = String(v[i][4] || '').split('\n').filter(String);
+    if (key) {
+      if (!ks.some(function (k) { return want[k]; })) continue;
+      ks.forEach(function (k) { want[k] = 1; }); // переименование: дальше ищем и по старому ключу
+    }
+    let changes = [];
+    try { changes = JSON.parse(v[i][7] || '[]'); } catch (e) { changes = []; }
+    out.push({
+      id: String(v[i][5]), time: show_(v[i][0]), name: String(v[i][1]), action: String(v[i][2]), keys: ks,
+      reverted: String(v[i][6] || ''), canRevert: !!v[i][7] && !v[i][6],
+      items: changes.length ? changes.filter(visible_).slice(0, 30).map(function (ch) {
+        return ch.t === 'cell' ? { label: label_(ch), b: show_(ch.b), a: show_(ch.a) }
+          : { label: ch.t === 'del' ? (ch.s === 'R' ? 'Удалена строка анкеты' : 'Удалена подача') : (ch.s === 'R' ? 'Добавлена строка анкеты' : 'Добавлена подача'), row: true };
+      }) : String(v[i][3]).split('\n').map(function (t) { return { label: t, row: true }; })
+    });
+  }
+  return out;
+}
+
+function findHist_(id) {
+  const sh = histSheet_();
+  const v = sh.getDataRange().getValues();
+  for (let i = v.length - 1; i >= 1; i--) if (String(v[i][5]) === String(id)) return { sh: sh, row: i + 1, v: v[i] };
+  throw new Error('Запись истории не найдена');
+}
+
+/** Откатить запись истории. Если после неё значения уже меняли — без force вернёт список конфликтов. */
+function adminRevert(id, force) {
+  assertOwner_();
+  const h = findHist_(id);
+  if (h.v[6]) throw new Error('Уже откачено');
+  const changes = JSON.parse(h.v[7] || '[]');
+  if (!changes.length) throw new Error('Для этой записи откат недоступен');
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const res = logged_('adminRevert', function () {
+      const R = responsesSheet_(), Sg = subsSheet_();
+      const sheets = { R: R, S: Sg };
+      const vals = { R: R.getDataRange().getValues(), S: Sg.getDataRange().getValues() };
+      const cIdx = colIndex_(vals.R[0].map(String));
+      const locate = function (ch) {
+        const V = vals[ch.s];
+        const c = ch.s === 'R' ? cIdx : {};
+        if (ch.r < V.length && rowId_(ch.s, V[ch.r - 1], c) === ch.id) return ch.r;
+        for (let i = 1; i < V.length; i++) if (rowId_(ch.s, V[i], c) === ch.id) return i + 1;
+        return ch.r < V.length + 1 ? ch.r : 0;
+      };
+      const conflicts = [], plan = [];
+      changes.forEach(function (ch) {
+        if (ch.t === 'cell') {
+          const r = locate(ch);
+          const cur = r ? (vals[ch.s][r - 1] || [])[ch.c - 1] : undefined;
+          if (!r || !same_(cur === undefined ? '' : cur, deser_(ch.a))) conflicts.push(label_(ch) + ': сейчас «' + show_(cur) + '»');
+          if (r) plan.push({ k: 'set', s: ch.s, r: r, c: ch.c, val: deser_(ch.b) });
+        } else if (ch.t === 'add') {
+          const r = locate(ch);
+          if (r && rowId_(ch.s, vals[ch.s][r - 1], ch.s === 'R' ? cIdx : {}) === ch.id) plan.push({ k: 'delrow', s: ch.s, r: r });
+        } else if (ch.t === 'del') plan.push({ k: 'addrow', s: ch.s, v: ch.v.map(deser_), oldRow: ch.r });
+      });
+      if (conflicts.length && !force) return { conflicts: conflicts };
+      plan.filter(function (p) { return p.k === 'set'; }).forEach(function (p) { sheets[p.s].getRange(p.r, p.c).setValue(p.val); });
+      plan.filter(function (p) { return p.k === 'delrow'; }).sort(function (a, b) { return b.r - a.r; }).forEach(function (p) { sheets[p.s].deleteRow(p.r); });
+      const moved = {};
+      plan.filter(function (p) { return p.k === 'addrow' && p.s === 'R'; }).forEach(function (p) { R.appendRow(p.v); moved[p.oldRow] = R.getLastRow(); });
+      plan.filter(function (p) { return p.k === 'addrow' && p.s === 'S'; }).forEach(function (p) {
+        const row = p.v.slice(); if (moved[Number(row[8])]) row[8] = moved[Number(row[8])];
+        Sg.appendRow(row);
+      });
+      return { ok: true };
+    }, [], { label: 'Откат: ' + String(h.v[2]) });
+    if (res && res.ok) h.sh.getRange(h.row, 7).setValue('откачено ' + show_(new Date()));
+    return res;
+  } finally { lock.releaseLock(); }
 }

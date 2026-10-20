@@ -21,7 +21,7 @@ export const OPTIONS = {
 
 export const T = {
   ru: {
-    nav: { how: "Как это работает", price: "Стоимость", faq: "Вопросы", apply: "Заполнить анкету" },
+    nav: { benefits: "Что даёт грин‑карта", who: "Документы и участие", how: "Как это работает", price: "Стоимость", form: "Анкета", faq: "FAQ", apply: "Заполнить анкету" },
     hero: {
       kicker: "Лотерея грин-карт DV-2027",
       title: "Подам вашу заявку на грин-карту без ошибок и вовремя",
@@ -220,7 +220,7 @@ export const T = {
     footer: "Павел Белоглазов · Сакраменто, Калифорния",
   },
   en: {
-    nav: { how: "How it works", price: "Price", faq: "FAQ", apply: "Fill out the form" },
+    nav: { benefits: "Benefits", who: "Eligibility & documents", how: "How it works", price: "Price", form: "Form", faq: "FAQ", apply: "Fill out the form" },
     hero: {
       kicker: "DV-2027 Green Card Lottery",
       title: "I'll submit your green card lottery entry correctly and on time",

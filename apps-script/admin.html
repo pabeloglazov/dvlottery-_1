@@ -226,6 +226,20 @@ h1{margin:2px 0 0;font-size:30px;font-weight:800;letter-spacing:-.02em;line-heig
 .head-main{flex:1;min-width:220px;display:flex;flex-direction:column;gap:6px}
 .head-actions{display:flex;gap:8px;flex-wrap:wrap}
 .steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.hlog{display:flex;flex-direction:column}
+.hlog-e{padding:12px 18px;border-bottom:1px solid #f1f3f7;display:flex;flex-direction:column;gap:6px}
+.hlog-e:last-child{border-bottom:0}
+.hlog-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.hlog-top b{font-weight:600;font-size:14px}
+.hlog-top .t{color:var(--ink2);font-size:12.5px}
+.hlog-top .sp{flex:1}
+.hlog-top a{color:inherit;font-weight:600;text-decoration:none}
+.hlog-ch{font-size:13px;line-height:1.45;color:var(--ink2);overflow-wrap:anywhere}
+.hlog-ch .lbl{color:var(--ink);font-weight:600}
+.hlog-ch s{color:#9b2730;text-decoration-color:rgba(155,39,48,.45)}
+.hlog-ch ins{color:var(--greenInk);text-decoration:none}
+.hlog-done{font-size:12px;color:var(--ink2);background:#eef1f6;border-radius:999px;padding:2px 9px}
+.hlog-e.rv{opacity:.6}
 .danger-box{display:flex;flex-direction:column;gap:10px;border:1px solid #f1c4c7;background:#fdf3f3}
 .btn.danger{background:#b3261e;border-color:#b3261e;color:#fff}
 .btn.ghost-danger{background:none;border-color:transparent;color:#b3261e}
@@ -375,7 +389,9 @@ function setToken(t) { try { if (t) localStorage.setItem('dv_admin_token', t); e
 function post(body) {
   return fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) }).then(function (r) { return r.json(); });
 }
-function run(fn, args, ok, fail) {
+var READ_FNS = { adminData: 1, adminHistory: 1, adminGetPhoto: 1, adminCheckPhoto: 1 };
+function run(fn, args, ok0, fail) {
+  var ok = READ_FNS[fn] ? ok0 : function (x) { ok0 && ok0(x); histStale(); };
   if (!API) {
     var r = google.script.run.withSuccessHandler(function (x) { ok && ok(x); }).withFailureHandler(function (e) { toast('Ошибка: ' + (e && e.message || e)); fail && fail(e); });
     r[fn].apply(r, args);
@@ -386,6 +402,58 @@ function run(fn, args, ok, fail) {
     if (j.auth === false) { setToken(''); S.data = null; renderLogin(); return; }
     toast('Ошибка: ' + j.error); fail && fail(j.error);
   }, function () { toast('Нет связи с сервером. Проверьте интернет.'); fail && fail('network'); });
+}
+
+
+/* ---------- история изменений ---------- */
+function histStale() { if (S.hist) loadHist(S.hist.key, true); if (S.histAll) loadHist('', true); }
+function loadHist(key, quiet) {
+  var slot = key ? 'hist' : 'histAll';
+  var delay = quiet && S[slot] && S[slot].key === key && S[slot].items ? 700 : 0;
+  if (!quiet || !S[slot]) S[slot] = { key: key, items: S[slot] && S[slot].key === key ? S[slot].items : null, loading: true };
+  if (!quiet) render();
+  clearTimeout(loadHist['t' + slot]);
+  loadHist['t' + slot] = setTimeout(function () {
+    run('adminHistory', [key || '', key ? 100 : 25], function (items) {
+      if (!S[slot] || S[slot].key !== key) return;
+      S[slot] = { key: key, items: items, loading: false }; render();
+    }, function () { if (S[slot]) { S[slot].loading = false; render(); } });
+  }, delay);
+}
+function shortVal(v) {
+  v = String(v || '');
+  if (!v) return '<i class="muted">пусто</i>';
+  v = v.replace(/https?:\/\/\S+/g, function (u) { return '\u0001' + u + '\u0002'; });
+  var t = esc(v.length > 260 ? v.slice(0, 260) + '…' : v);
+  return t.replace(/\u0001(\S+?)\u0002/g, function (m, u) { return '<a href="' + u + '" target="_blank" rel="noopener">файл</a>'; }).replace(/\n/g, '<br>');
+}
+function histList(st, withName) {
+  if (!st || (!st.items && st.loading)) return '<div class="empty" style="padding:18px;text-align:left">Загружаю…</div>';
+  if (!st.items.length) return '<div class="empty" style="padding:18px;text-align:left">Изменений пока нет. История пишется с ' + '19.10.2026' + '.</div>';
+  return '<div class="hlog">' + st.items.map(function (e) {
+    var who = withName ? (byKey[e.keys.filter(function (k) { return byKey[k]; })[0]] ? '<a href="' + clientHref(e.keys.filter(function (k) { return byKey[k]; })[0]) + '" data-act="open" data-v="' + esc(e.keys.filter(function (k) { return byKey[k]; })[0]) + '">' + esc(e.name) + '</a>' : esc(e.name)) + ' · ' : '';
+    return '<div class="hlog-e' + (e.reverted ? ' rv' : '') + '"><div class="hlog-top"><b>' + who + esc(e.action) + '</b><span class="t">' + esc(e.time) + '</span><span class="sp"></span>' +
+      (e.reverted ? '<span class="hlog-done">' + esc(e.reverted) + '</span>' : e.canRevert ? '<button class="btn sm" data-act="histRevert" data-v="' + esc(e.id) + '"' + (S.busy ? ' disabled' : '') + '>' + I_REPL.replace('width="17" height="17"', 'width="14" height="14"') + ' Откатить</button>' : '') + '</div>' +
+      e.items.map(function (it) {
+        return '<div class="hlog-ch">' + (it.row ? '<span class="lbl">' + esc(it.label) + '</span>' : '<span class="lbl">' + esc(it.label) + ':</span> <s>' + shortVal(it.b) + '</s> → <ins>' + shortVal(it.a) + '</ins>') + '</div>';
+      }).join('') + '</div>';
+  }).join('') + '</div>';
+}
+function histRevert(id) {
+  if (S.busy || !confirm('Откатить это изменение? Вернутся прежние значения.')) return;
+  var go = function (force) {
+    S.busy = true; render();
+    run('adminRevert', [id, force], function (r) {
+      S.busy = false;
+      if (r && r.conflicts) {
+        render();
+        if (confirm('После этого изменения данные уже меняли:\n\n' + r.conflicts.join('\n') + '\n\nВсё равно вернуть прежние значения?')) go(true);
+        return;
+      }
+      toast('Откатил'); load(true);
+    }, function () { S.busy = false; render(); });
+  };
+  go(false);
 }
 
 /* ---------- вход по коду ---------- */
@@ -964,6 +1032,8 @@ function renderOverview(y) {
   h += block('Подавались раньше — пригласить снова', inv.length, inv, 'Все прошлые клиенты уже в этом сезоне.', {
     view: 'invite', meta: function (c) { return seasonsOf(c).map(function (s) { return 'DV-' + s; }).join(', ') + ' · ' + (c.telegram || ''); },
     html: function (c) { return '<button class="btn sm soft" data-act="add" data-y="' + S.data.current + '" data-v="' + esc(c.key) + '">В DV-' + S.data.current + '</button>'; } });
+  if (!S.histAll) loadHist('', true);
+  h += '</div><section class="card" style="margin-top:16px"><div class="sec-head"><h3>Последние изменения</h3><span class="muted">по всем клиентам</span></div>' + histList(S.histAll, true) + '</section>';
   return h;
 }
 
@@ -1207,6 +1277,8 @@ function renderCard(c, y) {
         '<button class="pen" data-act="edit" data-k="' + k + '" title="Изменить" aria-label="Изменить: ' + esc(label) + '">' + PEN + '</button></div>';
     }).join('') +
     '</div></section>';
+  if (!S.hist || S.hist.key !== c.key) loadHist(c.key, true);
+  h += '<section class="card"><div class="sec-head"><h3>История изменений</h3><span class="muted">что меняли в админке · можно откатить</span></div>' + histList(S.hist && S.hist.key === c.key ? S.hist : null) + '</section>';
   var nRows = (c.rows || [c.row]).length;
   h += S.del === c.key
     ? '<section class="card pad danger-box"><b>Удалить ' + esc(c.name) + '?</b><span class="muted">Из таблицы удалятся ' + (nRows > 1 ? 'все его анкеты (' + nRows + ' ' + plural(nRows, 'строка', 'строки', 'строк') + ')' : 'его анкета') + ' и все отметки по сезонам. Отменить нельзя. Фото в папке на Drive останутся.</span>' +
@@ -1236,6 +1308,7 @@ document.addEventListener('click', function (e) {
   if (a === 'cropApply') { cropApply(); return; }
   if (a === 'aiFix') { e.preventDefault(); aiFix(byKey[S.sel], aiTarget(byKey[S.sel], v)); return; }
   if (a === 'aiFixLb') { aiFix(byKey[S.sel], aiTarget(byKey[S.sel], S.lb && S.lb.url)); return; }
+  if (a === 'histRevert') { histRevert(v); return; }
   if (a === 'photoView') { e.preventDefault(); S.lb = { url: v, name: el.getAttribute('data-n') || '' }; render(); return; }
   if (a === 'lbClose') { if (e.target.closest('.lb-fig') && !e.target.closest('[data-act="lbClose"].btn')) return; S.lb = null; render(); return; }
   if (a === 'passCopy') { var pc = byKey[v]; if (pc) copyText(passRequest(pc), 'запрос'); return; }

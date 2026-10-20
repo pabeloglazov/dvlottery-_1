@@ -89,6 +89,23 @@ function DocIcon({ name }) {
 export default function App() {
   const [lang, setLang] = useState(detectLang);
   const t = T[lang];
+  const [navOn, setNavOn] = useState("");
+
+  // Подсветка раздела в шапке: какой блок сейчас под шапкой.
+  useEffect(() => {
+    const ids = ["benefits", "who", "how", "price", "form", "faq"];
+    const onScroll = () => {
+      const y = window.scrollY + 120;
+      let cur = "";
+      ids.forEach((id) => { const el = document.getElementById(id); if (el && el.getBoundingClientRect().top + window.scrollY <= y) cur = id; });
+      if (window.innerHeight + window.scrollY >= document.body.scrollHeight - 4) cur = "faq";
+      setNavOn(cur);
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => { window.removeEventListener("scroll", onScroll); window.removeEventListener("resize", onScroll); };
+  }, []);
 
   useEffect(() => {
     document.documentElement.lang = lang;
@@ -107,9 +124,9 @@ export default function App() {
             <span>Beloglazov <b>Green Card</b></span>
           </a>
           <nav className="topnav" aria-label="main">
-            <a href="#how">{t.nav.how}</a>
-            <a href="#price">{t.nav.price}</a>
-            <a href="#faq">{t.nav.faq}</a>
+            {["benefits", "who", "how", "price", "form", "faq"].map((id) => (
+              <a key={id} href={"#" + id} aria-current={navOn === id ? "true" : undefined}>{t.nav[id]}</a>
+            ))}
           </nav>
           <div className="lang" role="group" aria-label="Language">
             <button type="button" aria-pressed={lang === "ru"} onClick={() => setLang("ru")}>RU</button>
@@ -209,7 +226,7 @@ export default function App() {
           </div>
         </section>
 
-        <section id="price" className="section section-tint">
+        <section className="section section-tint">
           <div className="wrap">
             <h2>{t.why.title}</h2>
             <ul className="why-grid">
@@ -222,7 +239,7 @@ export default function App() {
               ))}
             </ul>
 
-            <div className="price-panel">
+            <div id="price" className="price-panel">
               <div className="price-main">
                 <h2>{t.price.title}</h2>
                 <div className="price-row">
