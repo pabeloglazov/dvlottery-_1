@@ -52,7 +52,15 @@ a{color:var(--green)}
 .lb-img{background:#fff;border-radius:16px;overflow:hidden;display:grid;place-items:center;min-height:200px}
 .lb-img img{display:block;max-width:100%;max-height:calc(100vh - 160px);object-fit:contain}
 .lb-fig figcaption{display:flex;align-items:center;justify-content:space-between;gap:12px;color:#fff;flex-wrap:wrap}
-.lb-btns{display:flex;gap:8px}
+.lb-btns{display:flex;gap:8px;flex-wrap:wrap}
+.btn.lb-ic{width:40px;height:40px;padding:0;position:relative;overflow:hidden}
+.btn.lb-ic svg{width:18px;height:18px}
+.btn.lb-ic input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.btn.sm.lb-ic{width:32px;height:32px}.btn.sm.lb-ic svg{width:15px;height:15px}
+.sec-r{display:flex;align-items:center;gap:10px}
+.av-up{position:absolute;inset:0;display:grid;place-items:center;background:rgba(255,255,255,.7);font-size:12px;font-weight:700;color:var(--green);cursor:pointer;opacity:0;transition:opacity .15s}
+.big-av:hover .av-up,.av-up:focus-within{opacity:1}
+.av-up input{position:absolute;inset:0;opacity:0;cursor:pointer}
 .pass-scans{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
 .ai-box{width:min(420px,100%);background:#fff;border-radius:16px;padding:16px;cursor:default}
 .ai-box-h{display:flex;flex-direction:column;margin-bottom:12px}.ai-box-h b{font-size:16px}
@@ -672,7 +680,8 @@ function aiTarget(c, url) {
 function aiSave(c, tg, r, srcUrl) {
   toast('Сохраняю фото…');
   if (tg.kind === 'me') {
-    run('adminSetPhoto', [c.row, asJpeg(r.fin), r.raw ? null : { originalUrl: srcUrl || tg.url, check: r.check }], function (res) {
+    var extra = r.raw ? null : (r.fresh ? { original: asJpeg(r.orig), check: r.check } : { originalUrl: srcUrl || tg.url, check: r.check });
+    run('adminSetPhoto', [c.row, asJpeg(r.fin), extra], function (res) {
       c.photo = res && res.url ? res.url : res; if (res && res.photoCheck) c.photoCheck = res.photoCheck; render(); toast('Фото обновлено · ' + aiVerdict(r));
     });
   } else {
@@ -836,7 +845,12 @@ function render() {
   if (S.lb) {
     var id = driveId(S.lb.url);
     html += '<div class="lb" data-act="lbClose" role="dialog" aria-modal="true" aria-label="Фото"><figure class="lb-fig"><div class="lb-img"><img src="' + (id ? thumb(S.lb.url, 1600) : esc(S.lb.url)) + '" alt="' + esc(S.lb.name) + '" referrerpolicy="no-referrer"></div>' +
-      '<figcaption><b>' + esc(S.lb.name) + '</b><span class="lb-btns">' + (aiTarget(sel, S.lb.url) ? '<button class="btn" data-act="cropOpen" title="Выбрать кадр вручную">' + CROPI + ' Кадрировать</button><button class="btn ai-btn" data-act="aiFixLb" title="Белый фон и формат 600×600 по правилам DV">' + SPARK + ' Привести к формату</button>' : '') + (id ? '<a class="btn pri" href="https://drive.google.com/uc?export=download&id=' + id + '" download>Скачать</a>' : '') + '<button class="btn" data-act="lbClose">Закрыть</button></span></figcaption></figure></div>';
+      '<figcaption><b>' + esc(S.lb.name) + '</b><span class="lb-btns">' + (aiTarget(sel, S.lb.url) ?
+        '<button class="btn lb-ic" data-act="cropOpen" title="Кадрировать вручную" aria-label="Кадрировать вручную">' + CROPI + '</button>' +
+        '<button class="btn lb-ic ai-btn" data-act="aiFixLb" title="ИИ: белый фон и формат 600×600 по правилам DV" aria-label="Привести к формату DV">' + SPARK + '</button>' +
+        '<label class="btn lb-ic" title="Заменить фото (ИИ обработает)" aria-label="Заменить фото">' + I_REPL + '<input type="file" accept="image/*,.heic,.heif" data-act="lbReplace"></label>' : '') +
+        (id ? '<a class="btn lb-ic" href="https://drive.google.com/uc?export=download&id=' + id + '" download title="Скачать" aria-label="Скачать">' + I_DOWN + '</a>' : '') +
+        '<button class="btn lb-ic" data-act="lbClose" title="Закрыть" aria-label="Закрыть">' + I_X + '</button></span></figcaption></figure></div>';
   }
   document.getElementById('app').innerHTML = html;
   if (keep) { var el = document.getElementById(keep); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch (e) {} } }
@@ -951,6 +965,11 @@ function renderOverview(y) {
 }
 
 var CROPI = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 1.5V12h10.5M1.5 4H12v10.5"/></svg>';
+var ICO = function (d) { return '<svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + '</svg>'; };
+var I_REPL = ICO('<path d="M3.5 8a4.5 4.5 0 0 1 7.8-3.1L13 6.5"/><path d="M13 2.8v3.7H9.3"/><path d="M12.5 8a4.5 4.5 0 0 1-7.8 3.1L3 9.5"/><path d="M3 13.2V9.5h3.7"/>');
+var I_DOWN = ICO('<path d="M8 2.5v8M4.5 7L8 10.5 11.5 7M3 13.5h10"/>');
+var I_X = ICO('<path d="M4 4l8 8M12 4l-8 8"/>');
+var I_COPY = ICO('<rect x="5.5" y="5.5" width="8" height="8" rx="1.8"/><path d="M10.5 5.5V3.8A1.3 1.3 0 0 0 9.2 2.5H3.8A1.3 1.3 0 0 0 2.5 3.8v5.4a1.3 1.3 0 0 0 1.3 1.3h1.7"/>');
 var SPARK = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1l1.5 4.5L14 7l-4.5 1.5L8 13l-1.5-4.5L2 7l4.5-1.5z"/><path d="M13 11l.6 1.4L15 13l-1.4.6L13 15l-.6-1.4L11 13l1.4-.6z"/></svg>';
 var CPI = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.8"/><path d="M10.5 5.5V3.8A1.3 1.3 0 0 0 9.2 2.5H3.8A1.3 1.3 0 0 0 2.5 3.8v5.4a1.3 1.3 0 0 0 1.3 1.3h1.7"/></svg>';
 var OKI = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>';
@@ -1104,12 +1123,11 @@ function renderCard(c, y) {
   var tg = tgUrl(c.telegram), t = thumb(c.photo, 400);
   var missing = (c.photo ? 0 : 1) + fam.filter(function (m) { return !m.photo; }).length;
   var h = '<button class="back" data-act="close">← Назад к списку</button>' +
-    '<div class="head"><span class="big-av" style="background:' + avColor(c.key) + '">' + esc(initials(c.name)) + (t ? '<button class="ph-btn" data-act="photoView" data-v="' + esc(c.photo) + '" data-n="' + esc(c.name) + '" aria-label="Открыть фото"><img src="' + t + '" alt="" referrerpolicy="no-referrer" onerror="this.remove()"></button>' : '') + '</span>' +
+    '<div class="head"><span class="big-av" style="background:' + avColor(c.key) + '">' + esc(initials(c.name)) + (t ? '<button class="ph-btn" data-act="photoView" data-v="' + esc(c.photo) + '" data-n="' + esc(c.name) + '" aria-label="Открыть фото"><img src="' + t + '" alt="" referrerpolicy="no-referrer" onerror="this.remove()"></button>' : '<label class="av-up" title="Загрузить фото (ИИ обработает)">+ фото<input type="file" accept="image/*,.heic,.heif" data-act="photo"></label>') + '</span>' +
     '<div class="head-main"><h1>' + esc(c.name) + '</h1><span class="muted">' + (seasons.length ? 'Клиент с DV-' + seasons[seasons.length - 1] + ' · сезонов: ' + seasons.length : 'Новый клиент') + (c.telegram ? ' · ' + esc(c.telegram) : '') + '</span>' + photoCheckLine(c) +
     '<span class="row-tags">' + (s ? pill(s.result || s.status) : '<span class="pill p-none">нет в DV-' + y + '</span>') + '<span class="tag">' + (fam.length ? 'семья · ' + (fam.length + 1) : 'один') + '</span>' +
     (missing ? '<span class="pill" style="background:#fbe3e4;color:#9b2730">нет фото: ' + missing + '</span>' : '<span class="pill p-paid">все фото есть</span>') + '</span></div>' +
-    '<div class="head-actions">' + (tg ? '<a class="btn pri" href="' + esc(tg) + '" target="_blank" rel="noopener">Telegram</a>' : '') + (c.email ? '<a class="btn" href="mailto:' + esc(c.email) + '">Email</a>' : '') + '<button class="btn" data-act="copyAll">Скопировать всё</button>' +
-    '<label class="btn file">' + (c.photo ? 'Заменить фото' : 'Загрузить фото') + '<input type="file" accept="image/*,.heic,.heif" data-act="photo"></label>' + (c.photo ? '<button class="btn ai-btn" data-act="aiFix" data-v="' + esc(c.photo) + '" title="ИИ: белый фон и формат 600×600 по правилам DV">' + SPARK + ' AI-формат</button><button class="btn" data-act="cropOpen" data-v="' + esc(c.photo) + '" title="Кадрировать вручную">' + CROPI + ' Кадр</button>' : '') + '</div></div>';
+    '<div class="head-actions">' + (tg ? '<a class="btn pri" href="' + esc(tg) + '" target="_blank" rel="noopener">Telegram</a>' : '') + (c.email ? '<a class="btn" href="mailto:' + esc(c.email) + '">Email</a>' : '') + '</div></div>';
 
   if (s) {
     h += '<section class="card pad" style="display:flex;flex-direction:column;gap:16px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap"><h2 class="sec-title" style="font-size:18px">Подача DV-' + y + '</h2><span class="muted">' + (s.date ? 'анкета ' + esc(s.date) : '') + '</span></div>' +
@@ -1144,7 +1162,7 @@ function renderCard(c, y) {
   fam.forEach(function (m) {
     var mt = thumb(m.photo, 120);
     h += '<div class="fam"><span class="av" style="background:' + avColor(m.name) + '">' + esc(initials(m.name)) + (mt ? '<button class="ph-btn" data-act="photoView" data-v="' + esc(m.photo) + '" data-n="' + esc(m.name) + '" aria-label="Открыть фото"><img src="' + mt + '" alt="" referrerpolicy="no-referrer" onerror="this.remove()"></button>' : '') + '</span><span class="t"><b style="font-weight:600">' + esc(m.name) + '</b><span class="muted">' + esc([m.rel, m.dob, m.place].filter(Boolean).join(' · ')) + '</span></span>' +
-      (m.photo ? '<button class="pill p-paid" data-act="photoView" data-v="' + esc(m.photo) + '" data-n="' + esc(m.name) + '" style="border:0;cursor:pointer">фото</button><button class="ai-chip" data-act="aiFix" data-v="' + esc(m.photo) + '" title="ИИ: белый фон и формат 600×600">' + SPARK + 'AI</button><button class="ai-chip crop-chip" data-act="cropOpen" data-v="' + esc(m.photo) + '" title="Кадрировать вручную">' + CROPI + '</button>' : '<span class="pill" style="background:#fbe3e4;color:#9b2730">нет фото</span>') +
+      (m.photo ? '<button class="pill p-paid" data-act="photoView" data-v="' + esc(m.photo) + '" data-n="' + esc(m.name) + '" style="border:0;cursor:pointer">фото</button>' : '<span class="pill" style="background:#fbe3e4;color:#9b2730">нет фото</span>') +
       '<span class="acts"><button class="pen" data-act="memEdit" data-kind="' + m.kind + '" data-i="' + m.idx + '" title="Изменить" aria-label="Изменить">' + PEN + '</button><button class="pen del" data-act="memDel" data-kind="' + m.kind + '" data-i="' + m.idx + '" title="Убрать из заявки" aria-label="Убрать из заявки">' + XIC + '</button></span></div>';
     if (S.memDel === m.kind + m.idx) h += '<div class="fam-del"><span style="flex:1">Убрать <b>' + esc(m.name) + '</b> из заявки?</span><button class="btn sm danger" data-act="memDelYes" data-kind="' + m.kind + '" data-i="' + m.idx + '"' + (S.busy ? ' disabled' : '') + '>Убрать</button><button class="btn sm" data-act="memDelNo">Отмена</button></div>';
   });
@@ -1168,7 +1186,7 @@ function renderCard(c, y) {
   }
   h += '</section></div>';
 
-  h += '<section class="card pad"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px"><h2 class="sec-title" style="font-size:18px">Данные для подачи</h2><span class="muted">клик — скопировать · ✎ — изменить</span></div><div class="grid2" style="column-gap:24px;row-gap:0">' +
+  h += '<section class="card pad"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:6px"><h2 class="sec-title" style="font-size:18px">Данные для подачи</h2><span class="sec-r"><span class="muted">клик — скопировать · ✎ — изменить</span><button class="btn sm lb-ic" data-act="copyAll" title="Скопировать всё" aria-label="Скопировать всё">' + I_COPY + '</button></span></div><div class="grid2" style="column-gap:24px;row-gap:0">' +
     FIELDS.map(function (f) {
       var k = f[0], label = f[1], val = c[k] || '';
       if (S.edit && S.edit.k === k) {
@@ -1352,6 +1370,10 @@ document.addEventListener('change', function (e) {
   else if (a === 'passDate' && S.pass) {
     var ss = el.parentNode.querySelectorAll('select'), pdd = ss[0].value, pmm = ss[1].value, pyy = ss[2].value;
     S.pass.expiry = pdd && pmm && pyy ? ('0' + pdd).slice(-2) + '.' + ('0' + pmm).slice(-2) + '.' + pyy : '';
+  }
+  else if (a === 'lbReplace' && c && el.files[0] && S.lb) {
+    var rf = el.files[0], rtg = aiTarget(c, S.lb.url); el.value = '';
+    if (rtg) { S.lb = null; render(); aiPhoto(rf, rtg.name).then(function (r) { r.fresh = true; aiSave(c, rtg, r); }, function () {}); }
   }
   else if (a === 'memberPhoto' && S.fam && el.files[0]) {
     var mf = el.files[0], fam = S.fam; el.value = '';
